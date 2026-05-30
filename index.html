@@ -218,6 +218,17 @@
             <button id="addFuel" class="mt-3 text-xs font-medium text-accent hover:underline">＋ 燃料を追加</button>
           </div>
 
+          <!-- Port master -->
+          <div>
+            <h3 class="text-sm font-semibold text-accent uppercase tracking-wider mb-3">寄港地マスタ</h3>
+            <p class="text-[11px] text-slate-500 mb-3">登録した寄港地が、航路レグの発地・着地ドロップダウンの選択肢になります。</p>
+            <div id="portList" class="flex flex-wrap gap-2"></div>
+            <div class="flex items-center gap-2 mt-3">
+              <input type="text" id="newPortName" placeholder="新しい寄港地名" class="num-input rounded-lg px-3 py-2 w-56 text-white text-sm focus:outline-none" />
+              <button id="addPort" class="rounded-lg bg-navy-700 border border-white/10 px-3 py-2 text-sm text-slate-200 hover:bg-navy-600 transition">＋ 追加</button>
+            </div>
+          </div>
+
           <!-- GFS targets -->
           <div>
             <h3 class="text-sm font-semibold text-accent uppercase tracking-wider mb-3">GFS 規制ターゲット CI 値 (g-CO₂e/MJ)</h3>
@@ -264,6 +275,9 @@ const DEFAULT_LEGS = [
   { from: 'Rotterdam', to: 'Hamburg',   mass: 400,  fuel: 'e-アンモニア' },
 ];
 
+// 寄港地マスタ（発地/着地はここから選択）
+const DEFAULT_PORTS = ['Singapore', 'Jeddah', 'Suez', 'Rotterdam', 'Hamburg'];
+
 const FUEL_COLORS = ['#60a5fa', '#22d3ee', '#34d399', '#a78bfa', '#f59e0b', '#f472b6', '#fb7185', '#facc15'];
 const MAX_LEGS = 10;
 
@@ -273,6 +287,7 @@ const MAX_LEGS = 10;
 let fuels   = structuredClone(DEFAULT_FUELS);
 let targets = { ...DEFAULT_TARGETS };
 let penaltyRate = DEFAULT_PENALTY_RATE;
+let ports   = [...DEFAULT_PORTS];
 let legs    = structuredClone(DEFAULT_LEGS);
 let currentYear = 2030;
 
@@ -285,6 +300,14 @@ const fmtNum = (v, d = 0) => v.toLocaleString('ja-JP', { minimumFractionDigits: 
 
 function fuelByName(name) {
   return fuels.find(f => f.name === name) || fuels[0];
+}
+
+// 寄港地マスタから <option> 群を生成。マスタ外の既存値も欠落させずに保持する。
+function portOptions(selected) {
+  const opts = ['<option value="">—</option>'];
+  const list = (selected && !ports.includes(selected)) ? [selected, ...ports] : ports;
+  list.forEach(p => opts.push(`<option value="${p}" ${p === selected ? 'selected' : ''}>${p}</option>`));
+  return opts.join('');
 }
 
 // Linear interpolation of GFS target CI for any year
@@ -378,8 +401,8 @@ function renderLegTable() {
     tr.className = 'border-b border-white/5 hover:bg-white/[0.02]';
     tr.innerHTML = `
       <td class="py-2 pr-3 text-slate-500 tabular-nums">${i + 1}</td>
-      <td class="py-2 pr-3"><input data-i="${i}" data-k="from" type="text" value="${leg.from}" class="num-input rounded-md px-2 py-1.5 w-full text-white text-sm focus:outline-none" placeholder="発地" /></td>
-      <td class="py-2 pr-3"><input data-i="${i}" data-k="to" type="text" value="${leg.to}" class="num-input rounded-md px-2 py-1.5 w-full text-white text-sm focus:outline-none" placeholder="着地" /></td>
+      <td class="py-2 pr-3"><select data-i="${i}" data-k="from" class="num-input rounded-md px-2 py-1.5 w-full text-white text-sm focus:outline-none">${portOptions(leg.from)}</select></td>
+      <td class="py-2 pr-3"><select data-i="${i}" data-k="to" class="num-input rounded-md px-2 py-1.5 w-full text-white text-sm focus:outline-none">${portOptions(leg.to)}</select></td>
       <td class="py-2 pr-3"><input data-i="${i}" data-k="mass" type="number" min="0" step="10" value="${leg.mass}" class="num-input rounded-md px-2 py-1.5 w-full text-white text-sm tabular-nums focus:outline-none" /></td>
       <td class="py-2 pr-3">
         <select data-i="${i}" data-k="fuel" class="num-input rounded-md px-2 py-1.5 w-full text-white text-sm focus:outline-none">
@@ -581,7 +604,27 @@ function renderSettings() {
     el.addEventListener('input', (e) => { targets[+e.target.dataset.year] = parseFloat(e.target.value) || 0; });
   });
 
+  renderPorts();
   $('penaltyRate').value = penaltyRate;
+}
+
+// 寄港地マスタをチップ表示（削除可・追加は入力欄から）
+function renderPorts() {
+  const wrap = $('portList');
+  wrap.innerHTML = '';
+  if (ports.length === 0) {
+    wrap.innerHTML = '<span class="text-xs text-slate-500">寄港地が未登録です。下の入力欄から追加してください。</span>';
+    return;
+  }
+  ports.forEach((p, i) => {
+    const chip = document.createElement('span');
+    chip.className = 'inline-flex items-center gap-2 rounded-full bg-navy-700 border border-white/10 pl-3 pr-2 py-1.5 text-sm text-slate-200';
+    chip.innerHTML = `${p}<button data-delport="${i}" class="text-slate-400 hover:text-rose-400" title="削除"><svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.4"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg></button>`;
+    wrap.appendChild(chip);
+  });
+  wrap.querySelectorAll('button[data-delport]').forEach(btn => {
+    btn.addEventListener('click', () => { ports.splice(+btn.dataset.delport, 1); renderPorts(); });
+  });
 }
 
 /* ============================================================
@@ -634,6 +677,17 @@ function init() {
     renderSettings();
   });
 
+  // Add port to master
+  const addPortFn = () => {
+    const name = $('newPortName').value.trim();
+    if (!name) return;
+    if (!ports.includes(name)) ports.push(name);
+    $('newPortName').value = '';
+    renderPorts();
+  };
+  $('addPort').addEventListener('click', addPortFn);
+  $('newPortName').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addPortFn(); } });
+
   $('penaltyRate').addEventListener('input', (e) => { penaltyRate = parseFloat(e.target.value) || 0; });
 
   $('applySettings').addEventListener('click', () => {
@@ -648,6 +702,7 @@ function init() {
     fuels = structuredClone(DEFAULT_FUELS);
     targets = { ...DEFAULT_TARGETS };
     penaltyRate = DEFAULT_PENALTY_RATE;
+    ports = [...DEFAULT_PORTS];
     renderSettings();
   });
 }
