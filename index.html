@@ -174,8 +174,8 @@
         <div class="h-72"><canvas id="ciChart"></canvas></div>
       </div>
       <div class="glass rounded-2xl p-5">
-        <h2 class="text-base font-semibold text-white">寄港地別 燃料需要 (バンカリング)</h2>
-        <p class="text-xs text-slate-400 mb-3">各寄港地で燃料種別ごとの需要量(ton)を積み上げ表示。次世代燃料の供給拠点検討に活用。</p>
+        <h2 class="text-base font-semibold text-white">給油地別 燃料需要 (バンカリング・発地基準)</h2>
+        <p class="text-xs text-slate-400 mb-3">各発地（給油地）で積み込む燃料種別ごとの需要量(ton)を積み上げ表示。次世代燃料のバンカリング拠点がどこで必要になるかを可視化。</p>
         <div class="h-72"><canvas id="bunkerChart"></canvas></div>
       </div>
     </section>
@@ -506,19 +506,19 @@ function updateCiChart(r) {
 }
 
 function updateBunkerChart() {
-  // ports = unique set of from+to; demand per port per fuel
+  // Bunkering = fuel is taken on board at the DEPARTURE port (発地) before sailing
+  // the leg. Attribute the full leg fuel demand to its departure port.
   const portOrder = [];
   const demand = {}; // port -> {fuel -> ton}
   const addDemand = (port, fuel, mass) => {
-    if (!port) return;
+    if (!port || mass <= 0) return;
     if (!demand[port]) { demand[port] = {}; portOrder.push(port); }
     demand[port][fuel] = (demand[port][fuel] || 0) + mass;
   };
   legs.forEach(leg => {
     const mass = Number(leg.mass) || 0;
-    // attribute demand to both departure and arrival ports (bunkering relevance)
-    addDemand(leg.from, leg.fuel, mass / 2);
-    addDemand(leg.to,   leg.fuel, mass / 2);
+    // 給油は発地（出港地）で次区間ぶんを積み込む想定 → 発地に全量計上
+    addDemand(leg.from, leg.fuel, mass);
   });
 
   const labels = portOrder;
