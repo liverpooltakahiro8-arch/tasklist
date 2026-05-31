@@ -73,6 +73,25 @@
 
   <main class="max-w-7xl mx-auto px-5 py-6 space-y-6">
 
+    <!-- ===================== SCENARIO SAVE / LOAD ===================== -->
+    <section class="glass rounded-2xl px-5 py-3 flex flex-wrap items-center gap-2.5">
+      <span class="text-sm font-semibold text-slate-300 mr-1 flex items-center gap-1.5">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M5 5a2 2 0 012-2h7l5 5v11a2 2 0 01-2 2H7a2 2 0 01-2-2V5z"/><path stroke-linecap="round" stroke-linejoin="round" d="M9 3v5h6"/></svg>
+        シナリオ
+      </span>
+      <input id="scenarioName" type="text" placeholder="例: Aライン VLCC 2030" class="num-input rounded-lg px-3 py-2 text-sm text-white w-52 focus:outline-none" />
+      <button id="saveScenario" class="rounded-lg bg-accent/90 px-3 py-2 text-sm font-semibold text-navy-900 hover:bg-accent transition">保存</button>
+      <select id="scenarioList" class="num-input rounded-lg px-3 py-2 text-sm text-white w-48 focus:outline-none"><option value="">— 保存済みシナリオ —</option></select>
+      <button id="loadScenario" class="rounded-lg bg-navy-700 border border-white/10 px-3 py-2 text-sm text-slate-200 hover:bg-navy-600 transition">読込</button>
+      <button id="deleteScenario" class="rounded-lg bg-navy-700 border border-white/10 px-3 py-2 text-sm text-slate-300 hover:bg-rose-500/20 hover:text-rose-300 transition">削除</button>
+      <span class="w-px h-6 bg-white/10 mx-1"></span>
+      <button id="exportScenario" class="rounded-lg bg-navy-700 border border-white/10 px-3 py-2 text-sm text-slate-200 hover:bg-navy-600 transition">エクスポート(JSON)</button>
+      <button id="importScenario" class="rounded-lg bg-navy-700 border border-white/10 px-3 py-2 text-sm text-slate-200 hover:bg-navy-600 transition">インポート</button>
+      <input id="importFile" type="file" accept="application/json,.json" class="hidden" />
+      <button id="resetSample" class="rounded-lg border border-white/10 px-3 py-2 text-sm text-slate-400 hover:bg-navy-700 transition">初期サンプルに戻す</button>
+      <span id="scenarioStatus" class="text-xs text-slate-400 ml-auto"></span>
+    </section>
+
     <!-- ===================== TARGET YEAR + KPI ===================== -->
     <section class="grid grid-cols-1 lg:grid-cols-12 gap-5">
 
@@ -822,6 +841,65 @@ function renderPorts() {
 }
 
 /* ============================================================
+   SCENARIO PERSISTENCE (save / load / export / import / autosave)
+============================================================ */
+const STORE_KEY = 'gfsSimulator.scenarios.v1';
+const AUTOSAVE_KEY = 'gfsSimulator.autosave.v1';
+
+// Snapshot of the full model that defines a scenario.
+function getState() {
+  return {
+    fuels: structuredClone(fuels),
+    targets: { ...targets },
+    penaltyRate,
+    ports: [...ports],
+    legs: structuredClone(legs),
+    currentYear,
+    sensFuelA, sensFuelB, sensEnergy,
+  };
+}
+
+// Restore a snapshot and refresh the whole UI.
+function applyState(s) {
+  if (!s) return;
+  fuels       = structuredClone(s.fuels ?? DEFAULT_FUELS);
+  targets     = { ...(s.targets ?? DEFAULT_TARGETS) };
+  penaltyRate = s.penaltyRate ?? DEFAULT_PENALTY_RATE;
+  ports       = [...(s.ports ?? DEFAULT_PORTS)];
+  legs        = structuredClone(s.legs ?? DEFAULT_LEGS);
+  currentYear = s.currentYear ?? 2030;
+  sensFuelA   = s.sensFuelA ?? null;
+  sensFuelB   = s.sensFuelB ?? null;
+  $('yearSlider').value = currentYear;
+  $('yearLabel').textContent = currentYear;
+  populateSensFuelSelects();
+  sensEnergy = (s.sensEnergy != null) ? s.sensEnergy : voyageTotalEnergy();
+  $('sensEnergy').value = sensEnergy;
+  renderLegTable();
+  renderSettings();
+  update();
+}
+
+function loadStore() { try { return JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch { return {}; } }
+function saveStore(o) { try { localStorage.setItem(STORE_KEY, JSON.stringify(o)); } catch (e) { /* storage may be unavailable */ } }
+function saveAuto() { try { localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(getState())); } catch (e) {} }
+function loadAuto() { try { return JSON.parse(localStorage.getItem(AUTOSAVE_KEY)); } catch { return null; } }
+
+function scenarioStatus(msg) {
+  const el = $('scenarioStatus');
+  el.textContent = msg;
+  if (msg) setTimeout(() => { if (el.textContent === msg) el.textContent = ''; }, 4000);
+}
+
+function refreshScenarioList(selected) {
+  const store = loadStore();
+  const names = Object.keys(store).sort();
+  const sel = $('scenarioList');
+  sel.innerHTML = '<option value="">— 保存済みシナリオ —</option>' +
+    names.map(n => `<option value="${n.replace(/"/g, '&quot;')}" ${n === selected ? 'selected' : ''}>${n}</option>`).join('');
+}
+
+/* ============================================================
    MAIN UPDATE
 ============================================================ */
 function update(refreshTable = true) {
@@ -830,6 +908,7 @@ function update(refreshTable = true) {
   if (ciChart) updateCiChart(r);
   if (bunkerChart) updateBunkerChart();
   if (sensChart) updateSensChart();
+  saveAuto();   // keep the working state so the page restores on reopen
   if (refreshTable) { /* table refreshed separately to preserve focus */ }
 }
 
@@ -837,6 +916,7 @@ function update(refreshTable = true) {
    EVENT WIRING
 ============================================================ */
 function init() {
+  const savedAuto = loadAuto();   // read before any update() overwrites it
   renderLegTable();
   renderSettings();
   buildCiChart();
@@ -846,7 +926,8 @@ function init() {
   sensEnergy = voyageTotalEnergy();
   $('sensEnergy').value = sensEnergy;
   buildSensChart();
-  update();
+  refreshScenarioList();
+  if (savedAuto) applyState(savedAuto); else update();
 
   // Year slider
   $('yearSlider').addEventListener('input', (e) => {
@@ -869,6 +950,84 @@ function init() {
   $('sensFuelB').addEventListener('change', (e) => { sensFuelB = e.target.value; updateSensChart(); });
   $('sensEnergy').addEventListener('input', (e) => { sensEnergy = parseFloat(e.target.value) || 0; updateSensChart(); });
   $('sensSync').addEventListener('click', () => { sensEnergy = voyageTotalEnergy(); $('sensEnergy').value = sensEnergy; updateSensChart(); });
+
+  // Scenario: save / load / delete
+  $('saveScenario').addEventListener('click', () => {
+    const name = $('scenarioName').value.trim();
+    if (!name) { scenarioStatus('シナリオ名を入力してください'); return; }
+    const store = loadStore();
+    const exists = Object.prototype.hasOwnProperty.call(store, name);
+    if (exists && !confirm(`「${name}」を上書き保存しますか？`)) return;
+    store[name] = getState();
+    saveStore(store);
+    refreshScenarioList(name);
+    scenarioStatus(`保存しました：${name}`);
+  });
+  $('scenarioName').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); $('saveScenario').click(); } });
+  $('loadScenario').addEventListener('click', () => {
+    const name = $('scenarioList').value;
+    if (!name) { scenarioStatus('読み込むシナリオを選択してください'); return; }
+    const store = loadStore();
+    if (!store[name]) { scenarioStatus('シナリオが見つかりません'); return; }
+    applyState(store[name]);
+    $('scenarioName').value = name;
+    scenarioStatus(`読み込みました：${name}`);
+  });
+  $('scenarioList').addEventListener('change', (e) => { if (e.target.value) $('scenarioName').value = e.target.value; });
+  $('deleteScenario').addEventListener('click', () => {
+    const name = $('scenarioList').value;
+    if (!name) { scenarioStatus('削除するシナリオを選択してください'); return; }
+    if (!confirm(`「${name}」を削除しますか？`)) return;
+    const store = loadStore();
+    delete store[name];
+    saveStore(store);
+    refreshScenarioList();
+    scenarioStatus(`削除しました：${name}`);
+  });
+
+  // Scenario: export / import as portable JSON
+  $('exportScenario').addEventListener('click', () => {
+    const name = $('scenarioName').value.trim() || 'gfs-scenario';
+    const payload = { _type: 'gfs-sim-scenario', version: 1, name, savedAt: new Date().toISOString(), state: getState() };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name.replace(/[^\w\-.]+/g, '_') + '.json';
+    a.click();
+    URL.revokeObjectURL(a.href);
+    scenarioStatus('JSONを書き出しました');
+  });
+  $('importScenario').addEventListener('click', () => $('importFile').click());
+  $('importFile').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(reader.result);
+        const state = parsed.state || parsed;   // accept raw state too
+        applyState(state);
+        if (parsed.name) $('scenarioName').value = parsed.name;
+        scenarioStatus(`インポートしました：${file.name}`);
+      } catch (err) {
+        scenarioStatus('インポート失敗：JSONを読めませんでした');
+      }
+      $('importFile').value = '';
+    };
+    reader.readAsText(file);
+  });
+
+  // Reset to the built-in sample
+  $('resetSample').addEventListener('click', () => {
+    if (!confirm('現在の入力を破棄して初期サンプルに戻しますか？')) return;
+    applyState({
+      fuels: DEFAULT_FUELS, targets: DEFAULT_TARGETS, penaltyRate: DEFAULT_PENALTY_RATE,
+      ports: DEFAULT_PORTS, legs: DEFAULT_LEGS, currentYear: 2030,
+      sensFuelA: null, sensFuelB: null, sensEnergy: null,
+    });
+    $('scenarioName').value = '';
+    scenarioStatus('初期サンプルに戻しました');
+  });
 
   // Settings modal
   const overlay = $('settingsOverlay');
