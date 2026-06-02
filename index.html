@@ -213,8 +213,8 @@
     <section class="glass rounded-2xl p-5">
       <div class="flex flex-wrap items-start justify-between gap-3 mb-1">
         <div>
-          <h2 class="text-base font-semibold text-white">感度分析：燃料ブレンド最適化</h2>
-          <p class="text-xs text-slate-400">総エネルギー需要を一定に保ち、クリーン燃料の調達重量を振って「燃料代＋ペナルティ＝総コスト」が最小になる点を探索します（評価年・価格・ペナルティ単価は上部の設定を使用）。</p>
+          <h2 class="text-base font-semibold text-white">感度分析：燃料ブレンド最適化（最適化スコープ限定）</h2>
+          <p class="text-xs text-slate-400">最適化レグ（航路表で「最適化」ONの区間）のエネルギー枠内で、クリーン燃料Aの調達重量を振って総コストが最小になる点を探索します。適合判定・ペナルティ・総コストは固定レグ(HFO等)を含む航路全体で評価します。</p>
         </div>
       </div>
 
@@ -229,11 +229,11 @@
           <select id="sensFuelB" class="num-input rounded-lg px-3 py-2 w-full text-white text-sm focus:outline-none"></select>
         </div>
         <div>
-          <label class="block text-[11px] text-slate-400 mb-1">総エネルギー需要 (MJ)</label>
+          <label class="block text-[11px] text-slate-400 mb-1">スコープ エネルギー (MJ)</label>
           <input id="sensEnergy" type="number" min="0" step="1000000" class="num-input rounded-lg px-3 py-2 w-full text-white text-sm tabular-nums focus:outline-none" />
         </div>
         <div class="flex items-end">
-          <button id="sensSync" class="rounded-lg bg-navy-700 border border-white/10 px-3 py-2 text-sm text-slate-200 hover:bg-navy-600 transition w-full">↻ 航路の総エネルギーを使用</button>
+          <button id="sensSync" class="rounded-lg bg-navy-700 border border-white/10 px-3 py-2 text-sm text-slate-200 hover:bg-navy-600 transition w-full">↻ 最適化レグのエネルギーを使用</button>
         </div>
       </div>
 
@@ -873,16 +873,37 @@ function voyageTotalEnergy() {
   return legs.reduce((s, leg) => s + legBreakdown(leg).energy, 0);
 }
 
-// Cost breakdown when `massA` tons of fuel A supply part of the fixed energy demand,
-// fuel B supplies the remainder. Returns null if inputs are degenerate.
-function sensPoint(massA, A, B, E, target) {
-  const eA = Math.min(massA * A.lhv, E);          // energy from A (capped at total)
-  const eB = Math.max(E - eA, 0);                  // remaining energy from B
+// Energy (MJ) of the optimization scope = sum of optimize legs' energy demand.
+function scopeEnergyTotal() {
+  return legs.filter(isOptimizeLeg).reduce((s, leg) => s + (Number(leg.energyMJ) || 0), 0);
+}
+
+// Constants contributed by the FIXED (non-optimize) legs. These do not change as
+// we sweep the scope blend, but they DO count toward whole-voyage CI / cost / penalty.
+function fixedLegAggregate() {
+  let energy = 0, ciWeighted = 0, cost = 0;
+  legs.filter(l => !isOptimizeLeg(l)).forEach(leg => {
+    const bd = legBreakdown(leg);
+    energy += bd.energy; ciWeighted += bd.ciWeighted; cost += bd.cost;
+  });
+  return { energy, ciWeighted, cost };
+}
+
+// Cost/CI breakdown when `massA` tons of fuel A supply part of the SCOPE energy E,
+// fuel B supplies the remainder. CI, penalty and total cost are evaluated over the
+// WHOLE voyage (scope blend + fixed legs), so a fixed HFO leg is correctly included.
+function sensPoint(massA, A, B, E, target, fixed) {
+  const eA = Math.min(massA * A.lhv, E);          // scope energy from A (capped at scope)
+  const eB = Math.max(E - eA, 0);                  // remaining scope energy from B
   const mB = B.lhv > 0 ? eB / B.lhv : 0;
-  const ciAvg = E > 0 ? (eA * A.ci + eB * B.ci) / E : 0;
-  const fuelCost = massA * A.price + mB * B.price;
-  const penalty = Math.max(0, ciAvg - target) * (E / 1e6) * penaltyRate;
-  return { massA, massB: mB, ciAvg, fuelCost, penalty, total: fuelCost + penalty };
+  const scopeCost = massA * A.price + mB * B.price;
+
+  // whole-voyage figures
+  const totalEnergy = fixed.energy + E;
+  const ciAvg = totalEnergy > 0 ? (fixed.ciWeighted + eA * A.ci + eB * B.ci) / totalEnergy : 0;
+  const penalty = Math.max(0, ciAvg - target) * (totalEnergy / 1e6) * penaltyRate;
+  const total = fixed.cost + scopeCost + penalty;     // whole-voyage total cost
+  return { massA, massB: mB, ciAvg, scopeCost, fuelCost: fixed.cost + scopeCost, penalty, total };
 }
 
 function buildSensChart() {
@@ -919,35 +940,40 @@ function buildSensChart() {
 function updateSensChart() {
   if (!sensChart) return;
   const A = fuelByName(sensFuelA), B = fuelByName(sensFuelB);
-  const E = sensEnergy > 0 ? sensEnergy : 0;
+  const E = sensEnergy > 0 ? sensEnergy : 0;       // SCOPE energy only
   const target = interpolateTarget(currentYear);
-  const maxA = A.lhv > 0 ? E / A.lhv : 0;   // tons of A needed to cover 100% of energy
+  const fixed = fixedLegAggregate();
+  const maxA = A.lhv > 0 ? E / A.lhv : 0;          // tons of A to cover 100% of SCOPE energy
+  const totalEnergy = fixed.energy + E;
 
-  // Draw the cost curves over a fine grid.
+  // Draw the cost curves over a fine grid (x = scope fuel A tonnage).
   const STEPS = 80;
   const fuelLine = [], penLine = [], totLine = [];
   for (let i = 0; i <= STEPS; i++) {
     const massA = maxA * (i / STEPS);
-    const pt = sensPoint(massA, A, B, E, target);
+    const pt = sensPoint(massA, A, B, E, target, fixed);
     fuelLine.push({ x: massA, y: pt.fuelCost });
     penLine.push({ x: massA, y: pt.penalty });
     totLine.push({ x: massA, y: pt.total });
   }
 
-  // Exact compliance point (CI_avg == target):
-  //   eA*(ciA - ciB) = E*(target - ciB)  ->  massA = eA / LHV_A
-  let complyMassA = null;
+  // Exact whole-voyage compliance point (CI_avg == target). Total weighted CI is
+  //   fixed.ciWeighted + eA*ciA + (E-eA)*ciB == target * totalEnergy
+  //   -> eA*(ciA - ciB) = target*totalEnergy - fixed.ciWeighted - E*ciB
+  let complyMassA = null, complyReachable = false;
   if (A.ci !== B.ci) {
-    const eA = E * (target - B.ci) / (A.ci - B.ci);
-    if (eA >= -1e-6 && eA <= E + 1e-6) complyMassA = Math.min(Math.max(eA, 0), E) / A.lhv;
-  } else if (B.ci <= target) {
-    complyMassA = 0; // both fuels already compliant
+    const eA = (target * totalEnergy - fixed.ciWeighted - E * B.ci) / (A.ci - B.ci);
+    if (eA >= -1e-6 && eA <= E + 1e-6) { complyMassA = Math.min(Math.max(eA, 0), E) / A.lhv; complyReachable = true; }
+  } else {
+    // A and B same CI: scope CI fixed; compliance depends only on whole-voyage CI at any blend
+    const pt0 = sensPoint(0, A, B, E, target, fixed);
+    if (pt0.ciAvg <= target + 1e-6) { complyMassA = 0; complyReachable = true; }
   }
-  const complyPt = complyMassA !== null ? sensPoint(complyMassA, A, B, E, target) : null;
+  const complyPt = complyMassA !== null ? sensPoint(complyMassA, A, B, E, target, fixed) : null;
 
   // Total cost is piecewise-linear with a kink at the compliance point, so the
   // optimum is always one of {0, compliance point, all-A}. Evaluate those exactly.
-  const candidates = [sensPoint(0, A, B, E, target), sensPoint(maxA, A, B, E, target)];
+  const candidates = [sensPoint(0, A, B, E, target, fixed), sensPoint(maxA, A, B, E, target, fixed)];
   if (complyMassA !== null && complyMassA > 1e-6 && complyMassA < maxA - 1e-6) candidates.push(complyPt);
   let best = candidates[0];
   candidates.forEach(c => { if (c.total < best.total - 1e-6) best = c; });
@@ -956,11 +982,11 @@ function updateSensChart() {
   sensChart.data.datasets[1].data = penLine;
   sensChart.data.datasets[2].data = totLine;
   sensChart.data.datasets[3].data = best ? [{ x: best.massA, y: best.total }] : [];
-  sensChart.data.datasets[4].data = complyPt ? [{ x: complyPt.massA, y: complyPt.total }] : [];
+  sensChart.data.datasets[4].data = (complyPt && complyReachable) ? [{ x: complyPt.massA, y: complyPt.total }] : [];
   sensChart.update('none');
 
   // summary readouts
-  const baseline = sensPoint(0, A, B, E, target);   // all fuel B
+  const baseline = sensPoint(0, A, B, E, target, fixed);   // scope all fuel B
   const share = E > 0 ? (best.massA * A.lhv) / E : 0;
   const saving = baseline.total - (best ? best.total : 0);
   $('sensOptA').textContent = fmtNum(best.massA);
@@ -968,7 +994,7 @@ function updateSensChart() {
   $('sensOptShare').textContent = fmtNum(share * 100, 0) + '%';
   $('sensOptCost').textContent = fmtUSD(best.total);
   $('sensOptCi').textContent = fmtNum(best.ciAvg, 1) + ' g-CO₂e/MJ';
-  $('sensComplyA').textContent = complyPt ? fmtNum(complyPt.massA) + ' ton' : '— (不要 / 不能)';
+  $('sensComplyA').textContent = (complyPt && complyReachable && complyMassA <= maxA + 1e-6) ? fmtNum(complyPt.massA) + ' ton' : '— (不要 / スコープ内で不能)';
   $('sensSaving').textContent = saving > 0.5 ? '▲ ' + fmtUSD(saving) : '±$0';
 
   const compliant = best.ciAvg <= target + 1e-6;
@@ -977,11 +1003,13 @@ function updateSensChart() {
   badge.className = 'font-semibold ' + (compliant ? 'text-emerald-400' : 'text-rose-400');
 
   // note
+  const scopeLabel = `スコープ（最適化レグ計 ${fmtNum(E)} MJ）`;
   let note = '';
-  if (sensFuelA === sensFuelB) note = '※ 燃料AとBが同一です。異なる燃料を選ぶと価格差とCI差のトレードオフが見えます。';
-  else if (saving <= 0.5) note = `現価格・${currentYear}年では燃料Bのみが最安です（クリーン燃料への切替メリットなし）。ペナルティ単価の上昇や年次のCI規制強化でA調達が有利になります。`;
-  else if (best.massA >= maxA - 1e-6) note = `${currentYear}年では全量を燃料Aにするのが最安です（ペナルティ回避効果が価格差を上回る）。`;
-  else note = `総コストは燃料A ${fmtNum(best.massA)} ton 付近で最小。それ以上クリーン化してもコストは増加に転じます。`;
+  if (E <= 0) note = '最適化レグがありません。航路レグで「最適化」をONにすると、その区間のエネルギー枠内で燃料Aを振って分析します。';
+  else if (sensFuelA === sensFuelB) note = '※ 燃料AとBが同一です。異なる燃料を選ぶと価格差とCI差のトレードオフが見えます。';
+  else if (saving <= 0.5) note = `現価格・${currentYear}年では${scopeLabel}を燃料Bのみにするのが最安です（クリーン燃料への切替メリットなし）。ペナルティ単価の上昇やCI規制強化でA調達が有利に転じます。`;
+  else if (best.massA >= maxA - 1e-6) note = `${currentYear}年ではスコープ全量を燃料Aにするのが最安です（ペナルティ回避効果が価格差を上回る）。固定レグ(HFO等)は全体評価に含めて計算しています。`;
+  else note = `${scopeLabel}内では燃料A ${fmtNum(best.massA)} ton 付近で総コスト最小。適合判定・罰金・総コストは固定レグを含む航路全体で評価しています。`;
   $('sensNote').textContent = note;
 }
 
@@ -1088,7 +1116,7 @@ function applyState(s) {
   $('yearSlider').value = currentYear;
   $('yearLabel').textContent = currentYear;
   populateSensFuelSelects();
-  sensEnergy = (s.sensEnergy != null) ? s.sensEnergy : voyageTotalEnergy();
+  sensEnergy = (s.sensEnergy != null) ? s.sensEnergy : (scopeEnergyTotal() || voyageTotalEnergy());
   $('sensEnergy').value = sensEnergy;
   renderLegTable();
   renderSettings();
@@ -1136,9 +1164,9 @@ function init() {
   renderSettings();
   buildCiChart();
   buildBunkerChart();
-  // sensitivity: default fuels + energy basis from current voyage
+  // sensitivity: default fuels + energy basis from the optimization scope
   populateSensFuelSelects();
-  sensEnergy = voyageTotalEnergy();
+  sensEnergy = scopeEnergyTotal() || voyageTotalEnergy();
   $('sensEnergy').value = sensEnergy;
   buildSensChart();
   refreshScenarioList();
@@ -1164,7 +1192,7 @@ function init() {
   $('sensFuelA').addEventListener('change', (e) => { sensFuelA = e.target.value; updateSensChart(); });
   $('sensFuelB').addEventListener('change', (e) => { sensFuelB = e.target.value; updateSensChart(); });
   $('sensEnergy').addEventListener('input', (e) => { sensEnergy = parseFloat(e.target.value) || 0; updateSensChart(); });
-  $('sensSync').addEventListener('click', () => { sensEnergy = voyageTotalEnergy(); $('sensEnergy').value = sensEnergy; updateSensChart(); });
+  $('sensSync').addEventListener('click', () => { sensEnergy = scopeEnergyTotal() || voyageTotalEnergy(); $('sensEnergy').value = sensEnergy; updateSensChart(); });
 
   // Scenario: save / load / delete
   $('saveScenario').addEventListener('click', () => {
