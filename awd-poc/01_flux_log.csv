@@ -1,0 +1,5 @@
+Date,Time_start,Operator,Plot_ID,Water_trt,Organic_trt,Rep,DAT,Chamber_vol_L,Chamber_area_m2,Chamber_temp_C,CH4_t0_ppm,CH4_t10_ppm,CH4_t20_ppm,CH4_t30_ppm,N2O_t0_ppm,N2O_t10_ppm,N2O_t20_ppm,N2O_t30_ppm,CH4_flux_mg_m2_h,N2O_flux_mg_m2_h,R2_CH4,R2_N2O,Water_level_cm,Eh_mV,Soil_temp_5cm_C,Soil_temp_10cm_C,Event,Air_temp_C,Precip_mm,QC_flag,Notes
+# 記入例 ↓（実測時は上書き／下に追記）,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+2026-07-01,09:30,,CF-O0,CF,O0,R1,7,20.0,0.16,31.5,2.05,2.62,3.18,3.79,0.331,0.335,0.339,0.342,,,,,3,-180,28.4,27.1,none,29.0,0,,移植後初回
+2026-07-01,09:45,,AWD-O1,AWD,O1,R1,7,20.0,0.16,32.0,2.10,3.40,4.71,6.05,0.330,0.341,0.350,0.361,,,,,2,-150,28.9,27.5,none,29.5,0,,落水前
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,

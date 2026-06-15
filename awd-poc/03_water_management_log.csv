@@ -1,0 +1,7 @@
+Date,Plot_ID,Water_trt,Rep,DAT,Water_level_cm,Action,Eh_mV,Soil_temp_5cm_C,Air_temp_C,Precip_mm,Operator,Notes
+# Water_level_cm: 田面基準（+湛水/-地下水位）。AWDは -15cm で再湛水,,,,,,,,,,,,
+# Action: flood / drain_start / re-flood / mid-season_drainage / final_drainage / none,,,,,,,,,,,,
+2026-07-01,AWD-O1,AWD,R1,7,2,none,-150,28.9,29.5,0,,落水前
+2026-07-08,AWD-O1,AWD,R1,14,-12,drain_start,120,29.5,31.0,0,,落水開始
+2026-07-11,AWD-O1,AWD,R1,17,-15,re-flood,250,30.1,31.5,0,,閾値到達→再湛水
+,,,,,,,,,,,,

@@ -1,0 +1,19 @@
+Plot_ID,Water_trt,Organic_trt,Rep,Block,SFo_design,Soil_texture,SOC_pct,pH,Bulk_density_g_cm3,Variety,Transplant_date,Harvest_date,Cultivation_days,Organic_type,ROA_t_ha_fresh,Dry_matter_pct,ROA_t_ha_dry,Incorporation_date,Days_before_flooding,N_fert_kg_ha,Yield_t_ha,AWD_threshold_cm,Notes
+CF-O0,CF,O0,R1,B1,1.0,,,,,,,,,none,0,,0,,,,, ,連続湛水・有機物なし（純ベース）
+CF-O1,CF,O1,R1,B1,5.0,,,,,,,,,fresh_straw,4,,,,< 30,,, ,連続湛水・わら新鮮4t
+CF-O3,CF,O3,R1,B1,3.0,,,,,,,,,straw_autumn,4,,,,> 30,,, ,連続湛水・わら秋すき込み
+AWD-O0,AWD,O0,R1,B1,1.0,,,,,,,,,none,0,,0,,,,,-15,AWD・有機物なし（水の純効果）
+AWD-O1,AWD,O1,R1,B1,5.0,,,,,,,,,fresh_straw,4,,,,< 30,,,-15,AWD・わら新鮮4t（相互作用が最大）
+AWD-O3,AWD,O3,R1,B1,3.0,,,,,,,,,straw_autumn,4,,,,> 30,,,-15,AWD・わら秋すき込み（現地慣行）
+CF-O0,CF,O0,R2,B2,1.0,,,,,,,,,none,0,,0,,,,, ,
+CF-O1,CF,O1,R2,B2,5.0,,,,,,,,,fresh_straw,4,,,,< 30,,, ,
+CF-O3,CF,O3,R2,B2,3.0,,,,,,,,,straw_autumn,4,,,,> 30,,, ,
+AWD-O0,AWD,O0,R2,B2,1.0,,,,,,,,,none,0,,0,,,,,-15,
+AWD-O1,AWD,O1,R2,B2,5.0,,,,,,,,,fresh_straw,4,,,,< 30,,,-15,
+AWD-O3,AWD,O3,R2,B2,3.0,,,,,,,,,straw_autumn,4,,,,> 30,,,-15,
+CF-O0,CF,O0,R3,B3,1.0,,,,,,,,,none,0,,0,,,,, ,
+CF-O1,CF,O1,R3,B3,5.0,,,,,,,,,fresh_straw,4,,,,< 30,,, ,
+CF-O3,CF,O3,R3,B3,3.0,,,,,,,,,straw_autumn,4,,,,> 30,,, ,
+AWD-O0,AWD,O0,R3,B3,1.0,,,,,,,,,none,0,,0,,,,,-15,
+AWD-O1,AWD,O1,R3,B3,5.0,,,,,,,,,fresh_straw,4,,,,< 30,,,-15,
+AWD-O3,AWD,O3,R3,B3,3.0,,,,,,,,,straw_autumn,4,,,,> 30,,,-15,
