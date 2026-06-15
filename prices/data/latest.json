@@ -1,0 +1,219 @@
+{
+  "updated_at_jst": "2026-06-15 12:38 JST",
+  "updated_at_iso": "2026-06-15T12:38:49.872932+09:00",
+  "next_update_jst": "2026-06-16 06:00 JST",
+  "available_count": 10,
+  "total_count": 10,
+  "markets": {
+    "brent": {
+      "value": 72.0,
+      "source": "Yahoo Finance (seed)"
+    },
+    "wti": {
+      "value": 68.5,
+      "source": "Yahoo Finance (seed)"
+    },
+    "natgas": {
+      "value": 3.4,
+      "source": "Yahoo Finance (seed)"
+    },
+    "heatoil": {
+      "value": 2.45,
+      "source": "Yahoo Finance (seed)"
+    },
+    "soyoil": {
+      "value": 46.0,
+      "source": "Yahoo Finance (seed)"
+    },
+    "ethanol": {
+      "value": 1.75,
+      "source": "Yahoo Finance (seed)"
+    }
+  },
+  "fuels": [
+    {
+      "key": "vlsfo",
+      "name": "VLSFO（低硫黄重油）",
+      "unit": "USD/t",
+      "price": 597.76,
+      "usd_per_gj": 14.76,
+      "change_pct": 0.74,
+      "source": "Yahoo Finance (seed)",
+      "basis": "Brent×7.33+70",
+      "kind": "Proxy",
+      "freq": "Daily",
+      "available": true
+    },
+    {
+      "key": "hsfo",
+      "name": "HSFO / IFO380（高硫黄重油）",
+      "unit": "USD/t",
+      "price": 502.76,
+      "usd_per_gj": 12.41,
+      "change_pct": 0.74,
+      "source": "Yahoo Finance (seed)",
+      "basis": "VLSFO−95",
+      "kind": "Proxy",
+      "freq": "Daily",
+      "available": true
+    },
+    {
+      "key": "mgo",
+      "name": "MGO（舶用軽油）",
+      "unit": "USD/t",
+      "price": 804.4,
+      "usd_per_gj": 18.84,
+      "change_pct": 0.78,
+      "source": "Yahoo Finance (seed)",
+      "basis": "HeatingOil×312+40",
+      "kind": "Proxy",
+      "freq": "Daily",
+      "available": true
+    },
+    {
+      "key": "biodiesel",
+      "name": "バイオディーゼル（B100/FAME）",
+      "unit": "USD/t",
+      "price": 1134.13,
+      "usd_per_gj": 30.49,
+      "change_pct": 0.78,
+      "source": "Yahoo Finance (seed)",
+      "basis": "大豆油×2204.6+120",
+      "kind": "Proxy",
+      "freq": "Daily",
+      "available": true
+    },
+    {
+      "key": "ethanol",
+      "name": "エタノール",
+      "unit": "USD/t",
+      "price": 586.25,
+      "usd_per_gj": 21.88,
+      "change_pct": 0.57,
+      "source": "Yahoo Finance (seed)",
+      "basis": "Ethanol先物×335",
+      "kind": "Direct",
+      "freq": "Daily",
+      "available": true
+    },
+    {
+      "key": "methanol",
+      "name": "メタノール",
+      "unit": "USD/t",
+      "price": 740.0,
+      "usd_per_gj": 37.19,
+      "change_pct": null,
+      "source": "Methanex ポステッド価格",
+      "basis": "アジア契約価格 (2026-04)",
+      "kind": "Reference",
+      "freq": "Monthly",
+      "available": true
+    },
+    {
+      "key": "ammonia",
+      "name": "アンモニア（参考値）",
+      "unit": "USD/t",
+      "price": 420.0,
+      "usd_per_gj": 22.58,
+      "change_pct": null,
+      "source": "World Bank / 公開コメンタリ",
+      "basis": "CFR Far East 参考 (2026-04)",
+      "kind": "Reference",
+      "freq": "Monthly",
+      "available": true
+    },
+    {
+      "key": "ammonia_model",
+      "name": "アンモニア（ガス連動 生産コスト推定）",
+      "unit": "USD/t",
+      "price": 295.6,
+      "usd_per_gj": 15.89,
+      "change_pct": 0.58,
+      "source": "Yahoo Finance (seed)",
+      "basis": "HenryHub×34+180",
+      "kind": "Model",
+      "freq": "Daily",
+      "available": true
+    },
+    {
+      "key": "hydrogen_grey",
+      "name": "水素 グレー（化石由来 推定）",
+      "unit": "USD/kg",
+      "price": 1.51,
+      "usd_per_gj": 12.6,
+      "change_pct": 0.6,
+      "source": "Yahoo Finance (seed)",
+      "basis": "HenryHub×0.18+0.9",
+      "kind": "Model",
+      "freq": "Daily",
+      "available": true,
+      "usd_per_t": 1512.0
+    },
+    {
+      "key": "hydrogen_green",
+      "name": "水素 グリーン（再エネ由来 推定）",
+      "unit": "USD/kg",
+      "price": 4.12,
+      "usd_per_gj": 34.33,
+      "change_pct": null,
+      "source": "電力単価 $0.06/kWh",
+      "basis": "電力×52+1.0",
+      "kind": "Model",
+      "freq": "Daily",
+      "available": true,
+      "usd_per_t": 4120.0
+    }
+  ],
+  "config": {
+    "coefficients": {
+      "vlsfo": {
+        "brent_mult": 7.33,
+        "premium": 70
+      },
+      "hsfo": {
+        "vlsfo_discount": 95
+      },
+      "mgo": {
+        "ho_gal_per_t": 312,
+        "premium": 40
+      },
+      "biodiesel": {
+        "lb_per_t": 2204.62,
+        "processing": 120
+      },
+      "ethanol": {
+        "gal_per_t": 335
+      },
+      "ammonia_model": {
+        "ng_mult": 34,
+        "opex": 180
+      },
+      "h2_grey": {
+        "ng_mult": 0.18,
+        "opex": 0.9
+      },
+      "h2_green": {
+        "power_usd_kwh": 0.06,
+        "kwh_per_kg": 52,
+        "opex": 1.0
+      },
+      "methanol_posted_usd_t": 740,
+      "methanol_as_of": "2026-04",
+      "ammonia_ref_usd_t": 420,
+      "ammonia_as_of": "2026-04"
+    },
+    "lhv_mj_kg": {
+      "mgo": 42.7,
+      "vlsfo": 40.5,
+      "hsfo": 40.5,
+      "biodiesel": 37.2,
+      "ethanol": 26.8,
+      "methanol": 19.9,
+      "ammonia": 18.6,
+      "hydrogen": 120.0
+    }
+  },
+  "disclaimer": "価格は無料市場指標に基づく参考目安。実取引・契約価格（Platts/Argus/Ship & Bunker等）とは異なる。",
+  "is_seed": true,
+  "seed_note": "初期サンプル値。GitHub Actions による初回自動更新（翌06:00 JST）で実データに置き換わります。"
+}

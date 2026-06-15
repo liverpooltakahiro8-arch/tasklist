@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>船舶燃料 価格モニター | Marine Fuel Price Monitor</title>
+<meta name="description" content="バイオディーゼル・エタノール・メタノール・重油・アンモニア・水素など船舶燃料の価格目安を無料市場指標から毎朝06:00 JSTに自動更新。" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+  tailwind.config = {
+    theme: { extend: {
+      colors: {
+        navy: { 900:'#0b1120',850:'#111827',800:'#1a2336',700:'#243049',600:'#2f3e5c' },
+        accent: { DEFAULT:'#38bdf8', cyan:'#22d3ee', teal:'#2dd4bf' },
+      },
+      fontFamily: { sans:['Inter','system-ui','-apple-system','Segoe UI','Roboto','Helvetica','Arial','sans-serif'] },
+    }},
+  };
+</script>
+<style>
+  body { background: radial-gradient(1200px 600px at 80% -10%, #16213e 0%, #0b1120 55%, #070b15 100%); }
+  ::-webkit-scrollbar { width:9px; height:9px; }
+  ::-webkit-scrollbar-track { background:#0b1120; }
+  ::-webkit-scrollbar-thumb { background:#2f3e5c; border-radius:6px; }
+  ::-webkit-scrollbar-thumb:hover { background:#38bdf8; }
+  .glass { background:rgba(26,35,54,0.72); backdrop-filter:blur(10px); border:1px solid rgba(148,163,184,0.10); }
+  .fade-in { animation:fadeIn .4s ease; }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(6px);} to{opacity:1;transform:none;} }
+  .card-hover { transition:transform .15s ease, box-shadow .15s ease, border-color .15s ease; }
+  .card-hover:hover { transform:translateY(-3px); border-color:rgba(56,189,248,0.4); box-shadow:0 12px 30px -12px rgba(56,189,248,0.35); }
+</style>
+</head>
+<body class="min-h-screen text-slate-200 font-sans antialiased">
+
+  <!-- HEADER -->
+  <header class="border-b border-white/10 bg-navy-900/60 backdrop-blur sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-5 py-4 flex items-center justify-between gap-4 flex-wrap">
+      <div class="flex items-center gap-3">
+        <div class="h-10 w-10 rounded-xl bg-gradient-to-br from-accent to-teal-400 flex items-center justify-center shadow-lg shadow-cyan-500/20">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-navy-900" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 18c1.5 1 3 1 4.5 0s3-1 4.5 0 3 1 4.5 0 3-1 4.5 0" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M5 14l2-7h10l2 7M9 7V4h6v3" />
+          </svg>
+        </div>
+        <div>
+          <h1 class="text-lg sm:text-xl font-bold tracking-tight text-white">船舶燃料 価格モニター</h1>
+          <p class="text-xs text-slate-400">Marine Fuel Price Monitor · 無料市場指標ベース</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-3">
+        <div class="text-right text-xs leading-tight">
+          <div class="text-slate-400">最終更新</div>
+          <div id="updatedAt" class="font-semibold text-accent">—</div>
+        </div>
+        <button id="refreshBtn" class="px-3 py-2 rounded-lg bg-navy-700 hover:bg-navy-600 border border-white/10 text-sm font-medium flex items-center gap-2">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h5M20 20v-5h-5M5 19A9 9 0 0119 5"/></svg>
+          更新
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-5 py-6 space-y-6">
+
+    <!-- STATUS BANNERS -->
+    <div id="seedBanner" class="hidden glass rounded-xl px-4 py-3 text-sm text-amber-200 border-amber-400/30 bg-amber-500/10"></div>
+    <div id="staleBanner" class="hidden glass rounded-xl px-4 py-3 text-sm text-rose-200 border-rose-400/30 bg-rose-500/10"></div>
+
+    <!-- SUMMARY -->
+    <section class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div class="glass rounded-xl p-4">
+        <div class="text-xs text-slate-400">取得燃料数</div>
+        <div id="statCount" class="text-2xl font-bold text-white mt-1">—</div>
+      </div>
+      <div class="glass rounded-xl p-4">
+        <div class="text-xs text-slate-400">最安（$/GJ）</div>
+        <div id="statCheap" class="text-2xl font-bold text-teal-300 mt-1">—</div>
+      </div>
+      <div class="glass rounded-xl p-4">
+        <div class="text-xs text-slate-400">最高（$/GJ）</div>
+        <div id="statExp" class="text-2xl font-bold text-rose-300 mt-1">—</div>
+      </div>
+      <div class="glass rounded-xl p-4">
+        <div class="text-xs text-slate-400">次回 自動更新</div>
+        <div id="statNext" class="text-base font-bold text-accent mt-1">—</div>
+      </div>
+    </section>
+
+    <!-- FUEL CARDS -->
+    <section>
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-sm font-semibold text-slate-300 uppercase tracking-wider">燃料別 価格</h2>
+        <div class="flex items-center gap-2 text-[11px] text-slate-400">
+          <span class="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-400/20">Direct 直接</span>
+          <span class="px-2 py-0.5 rounded-full bg-sky-500/15 text-sky-300 border border-sky-400/20">Proxy 連動</span>
+          <span class="px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-300 border border-violet-400/20">Model 推定</span>
+          <span class="px-2 py-0.5 rounded-full bg-slate-500/15 text-slate-300 border border-slate-400/20">Reference 参考</span>
+        </div>
+      </div>
+      <div id="cards" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+    </section>
+
+    <!-- CHART -->
+    <section class="glass rounded-2xl p-5">
+      <h2 class="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-1">エネルギー等価コスト比較（$/GJ）</h2>
+      <p class="text-xs text-slate-400 mb-4">低位発熱量(LHV)で割った「同じエネルギーあたりのコスト」。燃料転換の経済性比較に使用。</p>
+      <div class="relative" style="height:360px"><canvas id="gjChart"></canvas></div>
+    </section>
+
+    <!-- TABLE -->
+    <section class="glass rounded-2xl p-5 overflow-x-auto">
+      <h2 class="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-4">一覧表</h2>
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-left text-slate-400 border-b border-white/10">
+            <th class="py-2 pr-3 font-medium">燃料</th>
+            <th class="py-2 px-3 font-medium text-right">価格</th>
+            <th class="py-2 px-3 font-medium text-right">$/GJ</th>
+            <th class="py-2 px-3 font-medium text-right">前日比</th>
+            <th class="py-2 px-3 font-medium">区分/頻度</th>
+            <th class="py-2 px-3 font-medium">換算根拠</th>
+            <th class="py-2 pl-3 font-medium">出所</th>
+          </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </section>
+
+    <!-- DISCLAIMER / LINKS -->
+    <section class="glass rounded-2xl p-5 text-xs text-slate-400 space-y-2">
+      <p id="disclaimer">—</p>
+      <p>各燃料の出所・更新頻度・換算ロジックの詳細 → <a class="text-accent underline" href="../docs/DATA_SOURCES.md">docs/DATA_SOURCES.md</a></p>
+      <p>関連ツール → <a class="text-accent underline" href="../index.html">燃料転換 ＆ コンプライアンス・シミュレーター</a></p>
+      <p class="text-slate-500">自動更新：GitHub Actions（毎朝 06:00 JST）。データソース：Yahoo Finance / Stooq / Methanex / World Bank（いずれも無料）。</p>
+    </section>
+  </main>
+
+  <footer class="max-w-7xl mx-auto px-5 py-8 text-center text-xs text-slate-500">
+    船舶燃料 価格モニター · 参考目安であり実取引価格ではありません
+  </footer>
+
+<script>
+// 初回・file://・取得失敗時のフォールバック用に埋め込んだ初期データ
+const BOOTSTRAP = {
+  "updated_at_jst": "2026-06-15 12:38 JST",
+  "updated_at_iso": "2026-06-15T12:38:49.872932+09:00",
+  "next_update_jst": "2026-06-16 06:00 JST",
+  "available_count": 10,
+  "total_count": 10,
+  "markets": {
+    "brent": {
+      "value": 72.0,
+      "source": "Yahoo Finance (seed)"
+    },
+    "wti": {
+      "value": 68.5,
+      "source": "Yahoo Finance (seed)"
+    },
+    "natgas": {
+      "value": 3.4,
+      "source": "Yahoo Finance (seed)"
+    },
+    "heatoil": {
+      "value": 2.45,
+      "source": "Yahoo Finance (seed)"
+    },
+    "soyoil": {
+      "value": 46.0,
+      "source": "Yahoo Finance (seed)"
+    },
+    "ethanol": {
+      "value": 1.75,
+      "source": "Yahoo Finance (seed)"
+    }
+  },
+  "fuels": [
+    {
+      "key": "vlsfo",
+      "name": "VLSFO（低硫黄重油）",
+      "unit": "USD/t",
+      "price": 597.76,
+      "usd_per_gj": 14.76,
+      "change_pct": 0.74,
+      "source": "Yahoo Finance (seed)",
+      "basis": "Brent×7.33+70",
+      "kind": "Proxy",
+      "freq": "Daily",
+      "available": true
+    },
+    {
+      "key": "hsfo",
+      "name": "HSFO / IFO380（高硫黄重油）",
+      "unit": "USD/t",
+      "price": 502.76,
+      "usd_per_gj": 12.41,
+      "change_pct": 0.74,
+      "source": "Yahoo Finance (seed)",
+      "basis": "VLSFO−95",
+      "kind": "Proxy",
+      "freq": "Daily",
+      "available": true
+    },
+    {
+      "key": "mgo",
+      "name": "MGO（舶用軽油）",
+      "unit": "USD/t",
+      "price": 804.4,
+      "usd_per_gj": 18.84,
+      "change_pct": 0.78,
+      "source": "Yahoo Finance (seed)",
+      "basis": "HeatingOil×312+40",
+      "kind": "Proxy",
+      "freq": "Daily",
+      "available": true
+    },
+    {
+      "key": "biodiesel",
+      "name": "バイオディーゼル（B100/FAME）",
+      "unit": "USD/t",
+      "price": 1134.13,
+      "usd_per_gj": 30.49,
+      "change_pct": 0.78,
+      "source": "Yahoo Finance (seed)",
+      "basis": "大豆油×2204.6+120",
+      "kind": "Proxy",
+      "freq": "Daily",
+      "available": true
+    },
+    {
+      "key": "ethanol",
+      "name": "エタノール",
+      "unit": "USD/t",
+      "price": 586.25,
+      "usd_per_gj": 21.88,
+      "change_pct": 0.57,
+      "source": "Yahoo Finance (seed)",
+      "basis": "Ethanol先物×335",
+      "kind": "Direct",
+      "freq": "Daily",
+      "available": true
+    },
+    {
+      "key": "methanol",
+      "name": "メタノール",
+      "unit": "USD/t",
+      "price": 740.0,
+      "usd_per_gj": 37.19,
+      "change_pct": null,
+      "source": "Methanex ポステッド価格",
+      "basis": "アジア契約価格 (2026-04)",
+      "kind": "Reference",
+      "freq": "Monthly",
+      "available": true
+    },
+    {
+      "key": "ammonia",
+      "name": "アンモニア（参考値）",
+      "unit": "USD/t",
+      "price": 420.0,
+      "usd_per_gj": 22.58,
+      "change_pct": null,
+      "source": "World Bank / 公開コメンタリ",
+      "basis": "CFR Far East 参考 (2026-04)",
+      "kind": "Reference",
+      "freq": "Monthly",
+      "available": true
+    },
+    {
+      "key": "ammonia_model",
+      "name": "アンモニア（ガス連動 生産コスト推定）",
+      "unit": "USD/t",
+      "price": 295.6,
+      "usd_per_gj": 15.89,
+      "change_pct": 0.58,
+      "source": "Yahoo Finance (seed)",
+      "basis": "HenryHub×34+180",
+      "kind": "Model",
+      "freq": "Daily",
+      "available": true
+    },
+    {
+      "key": "hydrogen_grey",
+      "name": "水素 グレー（化石由来 推定）",
+      "unit": "USD/kg",
+      "price": 1.51,
+      "usd_per_gj": 12.6,
+      "change_pct": 0.6,
+      "source": "Yahoo Finance (seed)",
+      "basis": "HenryHub×0.18+0.9",
+      "kind": "Model",
+      "freq": "Daily",
+      "available": true,
+      "usd_per_t": 1512.0
+    },
+    {
+      "key": "hydrogen_green",
+      "name": "水素 グリーン（再エネ由来 推定）",
+      "unit": "USD/kg",
+      "price": 4.12,
+      "usd_per_gj": 34.33,
+      "change_pct": null,
+      "source": "電力単価 $0.06/kWh",
+      "basis": "電力×52+1.0",
+      "kind": "Model",
+      "freq": "Daily",
+      "available": true,
+      "usd_per_t": 4120.0
+    }
+  ],
+  "config": {
+    "coefficients": {
+      "vlsfo": {
+        "brent_mult": 7.33,
+        "premium": 70
+      },
+      "hsfo": {
+        "vlsfo_discount": 95
+      },
+      "mgo": {
+        "ho_gal_per_t": 312,
+        "premium": 40
+      },
+      "biodiesel": {
+        "lb_per_t": 2204.62,
+        "processing": 120
+      },
+      "ethanol": {
+        "gal_per_t": 335
+      },
+      "ammonia_model": {
+        "ng_mult": 34,
+        "opex": 180
+      },
+      "h2_grey": {
+        "ng_mult": 0.18,
+        "opex": 0.9
+      },
+      "h2_green": {
+        "power_usd_kwh": 0.06,
+        "kwh_per_kg": 52,
+        "opex": 1.0
+      },
+      "methanol_posted_usd_t": 740,
+      "methanol_as_of": "2026-04",
+      "ammonia_ref_usd_t": 420,
+      "ammonia_as_of": "2026-04"
+    },
+    "lhv_mj_kg": {
+      "mgo": 42.7,
+      "vlsfo": 40.5,
+      "hsfo": 40.5,
+      "biodiesel": 37.2,
+      "ethanol": 26.8,
+      "methanol": 19.9,
+      "ammonia": 18.6,
+      "hydrogen": 120.0
+    }
+  },
+  "disclaimer": "価格は無料市場指標に基づく参考目安。実取引・契約価格（Platts/Argus/Ship & Bunker等）とは異なる。",
+  "is_seed": true,
+  "seed_note": "初期サンプル値。GitHub Actions による初回自動更新（翌06:00 JST）で実データに置き換わります。"
+};
+
+const KIND_STYLE = {
+  Direct:  'bg-emerald-500/15 text-emerald-300 border-emerald-400/20',
+  Proxy:   'bg-sky-500/15 text-sky-300 border-sky-400/20',
+  Model:   'bg-violet-500/15 text-violet-300 border-violet-400/20',
+  Reference:'bg-slate-500/15 text-slate-300 border-slate-400/20',
+};
+const KIND_JA = { Direct:'直接', Proxy:'連動', Model:'推定', Reference:'参考' };
+const FREQ_JA = { Daily:'日次', Monthly:'月次', Reference:'参考' };
+
+const fmtNum = (n, d=2) => n==null ? '—' : Number(n).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});
+const fmtPrice = f => f.price==null ? 'N/A' : `${fmtNum(f.price, f.unit.includes('kg')?2:1)} <span class="text-xs text-slate-400">${f.unit}</span>`;
+
+function changeBadge(p){
+  if(p==null) return '<span class="text-slate-500">—</span>';
+  const up = p>=0;
+  const col = up ? 'text-emerald-300' : 'text-rose-300';
+  const arrow = up ? '▲' : '▼';
+  return `<span class="${col} font-semibold">${arrow} ${fmtNum(Math.abs(p),2)}%</span>`;
+}
+
+function render(d){
+  // ヘッダ・サマリ
+  document.getElementById('updatedAt').textContent = d.updated_at_jst || '—';
+  document.getElementById('statNext').textContent = d.next_update_jst || '—';
+  const avail = d.fuels.filter(f=>f.available && f.usd_per_gj!=null);
+  document.getElementById('statCount').textContent = `${d.available_count}/${d.total_count}`;
+  if(avail.length){
+    const cheap = avail.reduce((a,b)=>a.usd_per_gj<b.usd_per_gj?a:b);
+    const exp   = avail.reduce((a,b)=>a.usd_per_gj>b.usd_per_gj?a:b);
+    document.getElementById('statCheap').innerHTML = `${fmtNum(cheap.usd_per_gj,1)} <span class="text-xs text-slate-400 font-normal">${cheap.name.split('（')[0]}</span>`;
+    document.getElementById('statExp').innerHTML   = `${fmtNum(exp.usd_per_gj,1)} <span class="text-xs text-slate-400 font-normal">${exp.name.split('（')[0]}</span>`;
+  }
+  document.getElementById('disclaimer').textContent = d.disclaimer || '';
+
+  // バナー
+  const seed = document.getElementById('seedBanner');
+  if(d.is_seed){ seed.classList.remove('hidden'); seed.textContent = '⚠ ' + (d.seed_note || '初期サンプル値です。'); }
+  else seed.classList.add('hidden');
+  const stale = document.getElementById('staleBanner');
+  if(d.stale){ stale.classList.remove('hidden'); stale.textContent = `⚠ データ取得に失敗したため前回値を表示中（確認時刻: ${d.stale_checked_at_jst||'—'}）`; }
+  else stale.classList.add('hidden');
+
+  // カード
+  const cards = document.getElementById('cards');
+  cards.innerHTML = d.fuels.map(f=>{
+    const ks = KIND_STYLE[f.kind] || KIND_STYLE.Reference;
+    const gj = f.usd_per_gj==null ? '' :
+      `<div class="mt-3 pt-3 border-t border-white/10 flex items-baseline justify-between">
+         <span class="text-xs text-slate-400">エネルギー等価</span>
+         <span class="text-base font-semibold text-teal-300">$${fmtNum(f.usd_per_gj,2)}<span class="text-xs text-slate-400">/GJ</span></span>
+       </div>`;
+    const perT = (f.usd_per_t!=null && f.unit.includes('kg')) ?
+      `<div class="text-[11px] text-slate-500 mt-0.5">≈ ${fmtNum(f.usd_per_t,0)} USD/t</div>` : '';
+    return `<div class="glass card-hover rounded-2xl p-4 fade-in ${f.available?'':'opacity-60'}">
+      <div class="flex items-start justify-between gap-2">
+        <h3 class="text-sm font-semibold text-white leading-snug">${f.name}</h3>
+        <span class="shrink-0 text-[10px] px-2 py-0.5 rounded-full border ${ks}">${KIND_JA[f.kind]||f.kind}</span>
+      </div>
+      <div class="mt-3 flex items-baseline justify-between">
+        <div class="text-2xl font-bold text-white">${fmtPrice(f)}</div>
+        <div class="text-sm">${changeBadge(f.change_pct)}</div>
+      </div>
+      ${perT}
+      ${gj}
+      <div class="mt-3 flex items-center justify-between text-[11px] text-slate-500">
+        <span>${FREQ_JA[f.freq]||f.freq} · ${f.basis||''}</span>
+      </div>
+      <div class="text-[11px] text-slate-500 truncate" title="${f.source||''}">出所: ${f.source||'—'}</div>
+    </div>`;
+  }).join('');
+
+  // テーブル
+  document.getElementById('tableBody').innerHTML = d.fuels.map(f=>`
+    <tr class="border-b border-white/5 hover:bg-white/5">
+      <td class="py-2 pr-3 font-medium text-white">${f.name}</td>
+      <td class="py-2 px-3 text-right">${f.price==null?'N/A':fmtNum(f.price, f.unit.includes('kg')?2:1)+' '+f.unit}</td>
+      <td class="py-2 px-3 text-right text-teal-300">${f.usd_per_gj==null?'—':'$'+fmtNum(f.usd_per_gj,2)}</td>
+      <td class="py-2 px-3 text-right">${changeBadge(f.change_pct)}</td>
+      <td class="py-2 px-3 text-slate-400">${KIND_JA[f.kind]||f.kind} / ${FREQ_JA[f.freq]||f.freq}</td>
+      <td class="py-2 px-3 text-slate-400">${f.basis||'—'}</td>
+      <td class="py-2 pl-3 text-slate-400">${f.source||'—'}</td>
+    </tr>`).join('');
+
+  drawChart(avail);
+}
+
+let chart;
+function drawChart(avail){
+  const sorted = [...avail].sort((a,b)=>a.usd_per_gj-b.usd_per_gj);
+  const labels = sorted.map(f=>f.name.split('（')[0]);
+  const data = sorted.map(f=>f.usd_per_gj);
+  const colors = sorted.map(f=>({Direct:'#34d399',Proxy:'#38bdf8',Model:'#a78bfa',Reference:'#94a3b8'}[f.kind]||'#94a3b8'));
+  if(chart) chart.destroy();
+  chart = new Chart(document.getElementById('gjChart'), {
+    type:'bar',
+    data:{ labels, datasets:[{ label:'$/GJ', data, backgroundColor:colors, borderRadius:6 }] },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label:c=>` $${c.parsed.y.toFixed(2)} /GJ` } } },
+      scales:{
+        x:{ ticks:{ color:'#94a3b8', maxRotation:45, minRotation:30 }, grid:{display:false} },
+        y:{ ticks:{ color:'#94a3b8', callback:v=>'$'+v }, grid:{color:'rgba(148,163,184,0.1)'}, title:{display:true,text:'USD / GJ',color:'#64748b'} },
+      },
+    },
+  });
+}
+
+async function load(){
+  const btn = document.getElementById('refreshBtn');
+  btn.disabled = true; btn.classList.add('opacity-60');
+  try {
+    const res = await fetch('data/latest.json?_=' + Date.now(), {cache:'no-store'});
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    render(await res.json());
+  } catch(e){
+    // file:// やオフライン時は埋め込みデータで描画
+    render(BOOTSTRAP);
+  } finally {
+    btn.disabled = false; btn.classList.remove('opacity-60');
+  }
+}
+document.getElementById('refreshBtn').addEventListener('click', load);
+load();
+</script>
+</body>
+</html>
