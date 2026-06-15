@@ -66,13 +66,25 @@ EIA はより正確な現物価格を返すが無料キー登録が必要なた�
 ## 3. 自動更新の仕組み
 
 - **スケジュール**：GitHub Actions `cron: "0 21 * * *"`（UTC 21:00 = **JST 06:00**）
-- **処理**：`scripts/fetch_prices.py` が各ソースを取得 → `prices/data/latest.json` を更新し、`prices/data/history.csv` に追記 → 自動コミット
+- **処理**：`scripts/fetch_prices.py` が各ソースを取得 → `prices/data/latest.json` 更新・`prices/data/history.csv` 追記 → `scripts/build_standalone.py` が自己完結HTML `prices/index.html` を再生成 → 自動コミット
 - **耐障害性**：いずれかのソースが失敗しても、直近の取得値（`history.csv`／前回 `latest.json`）を保持し、`stale: true` と取得時刻を明示
-- **表示**：`prices/index.html` が `latest.json` を読み込み、最終更新時刻（JST）と次回更新予定（翌06:00 JST）を表示
+- **表示**：`prices/index.html` は価格データを**ファイル内に埋め込んで保持**し、最終更新時刻（JST）と次回更新予定（翌06:00 JST）を表示（外部読み込みなし）
 
 手動実行も可能：リポジトリの Actions タブから "Update Fuel Prices" を `workflow_dispatch` で起動。
 
 ---
+
+## 3.5 非公開（社内利用）運用とセキュリティ
+
+本サイトは**外部公開しない前提**で構成している。
+
+- **生成物 `prices/index.html` は完全自己完結の単一HTML**：CDN・外部API・解析タグ・外部フォントを一切含まず、外部へデータを送信しない（唯一現れる `www.w3.org/2000/svg` はSVG名前空間でネットワーク通信は発生しない）。価格データはファイル内 `const DATA` に埋め込み済みで、**ダブルクリックでオフライン表示**できる。
+- **GitHub Pages（公開ホスティング）は使用しない**。有効化しないこと。
+- **リポジトリは Private に設定**する。GitHub Actions は Private リポジトリでも実行され、処理内容・データが外部公開されることはない。
+- 社内配布は、Private リポジトリからの取得、または `prices/index.html` を**共有ドライブ／イントラ／社内ファイルサーバへ配置**して行う。
+- 完全オフライン（GitHub を使わない）運用も可能：社内端末で `python scripts/fetch_prices.py && python scripts/build_standalone.py` を OS のスケジューラ（cron / タスクスケジューラ）で毎朝06:00に実行すれば、同じ自己完結HTMLが手元で更新される。
+
+生成フロー：`fetch_prices.py`（価格取得→`latest.json`）→ `build_standalone.py`（`dashboard_template.html` に埋め込み→`prices/index.html`）。
 
 ## 4. 既知の限界と注意
 
