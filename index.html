@@ -45,6 +45,9 @@
   @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
   .num-input { background: #0b1120; border: 1px solid #2f3e5c; }
   .num-input:focus { border-color: #38bdf8; box-shadow: 0 0 0 3px rgba(56,189,248,0.18); }
+  .regime-tab { color: #94a3b8; }
+  .regime-tab:hover { color: #e2e8f0; background: rgba(255,255,255,0.04); }
+  .regime-tab.active { color: #0b1120; background: #38bdf8; box-shadow: 0 2px 10px rgba(56,189,248,0.25); }
 </style>
 </head>
 <body class="min-h-screen text-slate-200 font-sans antialiased">
@@ -92,8 +95,18 @@
       <span id="scenarioStatus" class="text-xs text-slate-400 ml-auto"></span>
     </section>
 
+    <!-- ===================== REGIME TABS ===================== -->
+    <section>
+      <div class="flex flex-wrap gap-1.5 p-1 rounded-xl glass w-fit" id="regimeTabs">
+        <button data-regime="gfs"     class="regime-tab px-4 py-2 rounded-lg text-sm font-semibold transition">IMO GFS</button>
+        <button data-regime="ets"     class="regime-tab px-4 py-2 rounded-lg text-sm font-semibold transition">EU ETS</button>
+        <button data-regime="fueleu"  class="regime-tab px-4 py-2 rounded-lg text-sm font-semibold transition">FuelEU Maritime</button>
+        <button data-regime="summary" class="regime-tab px-4 py-2 rounded-lg text-sm font-semibold transition">横断サマリ</button>
+      </div>
+    </section>
+
     <!-- ===================== TARGET YEAR + KPI ===================== -->
-    <section class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+    <section class="grid grid-cols-1 lg:grid-cols-12 gap-5" id="kpiSection">
 
       <!-- Year selector -->
       <div class="glass rounded-2xl p-5 lg:col-span-4">
@@ -101,16 +114,16 @@
           <h2 class="text-sm font-semibold text-slate-300 uppercase tracking-wider">評価対象年</h2>
           <span class="text-3xl font-extrabold text-white tabular-nums" id="yearLabel">2030</span>
         </div>
-        <input type="range" id="yearSlider" min="2026" max="2050" step="1" value="2030" class="w-full mt-2" />
+        <input type="range" id="yearSlider" min="2025" max="2050" step="1" value="2030" class="w-full mt-2" />
         <div class="flex justify-between text-[10px] text-slate-500 mt-1 px-0.5">
-          <span>2026</span><span>2032</span><span>2038</span><span>2044</span><span>2050</span>
+          <span>2025</span><span>2031</span><span>2037</span><span>2043</span><span>2050</span>
         </div>
         <div class="mt-4 flex items-end justify-between rounded-xl bg-navy-900/60 border border-white/5 px-4 py-3">
           <div>
-            <p class="text-[11px] text-slate-400">該当年 GFS ターゲット CI</p>
-            <p class="text-2xl font-bold text-accent tabular-nums"><span id="targetCiValue">—</span> <span class="text-sm font-normal text-slate-400">g-CO₂e/MJ</span></p>
+            <p class="text-[11px] text-slate-400" id="targetLabel">該当年 GFS ターゲット CI</p>
+            <p class="text-2xl font-bold text-accent tabular-nums"><span id="targetCiValue">—</span> <span class="text-sm font-normal text-slate-400" id="targetUnit">g-CO₂e/MJ</span></p>
           </div>
-          <span class="text-[10px] text-slate-500">線形補間適用</span>
+          <span class="text-[10px] text-slate-500" id="targetNote">線形補間適用</span>
         </div>
       </div>
 
@@ -123,13 +136,13 @@
             <span class="h-2.5 w-2.5 rounded-full" id="complianceDot"></span>
             <span id="complianceText">—</span>
           </div>
-          <p class="mt-2 text-xs text-slate-400">実績 CI: <span id="kpiCi" class="font-semibold text-white tabular-nums">—</span> g-CO₂e/MJ</p>
+          <p class="mt-2 text-xs text-slate-400"><span id="kpiCiLabel">実績 CI</span>: <span id="kpiCi" class="font-semibold text-white tabular-nums">—</span> <span id="kpiCiUnit">g-CO₂e/MJ</span></p>
         </div>
-        <!-- Penalty -->
+        <!-- Penalty / regulatory charge -->
         <div class="glass rounded-2xl p-4 flex flex-col justify-between">
-          <p class="text-[11px] text-slate-400 uppercase tracking-wider">年間ペナルティ額</p>
+          <p class="text-[11px] text-slate-400 uppercase tracking-wider" id="kpiPenaltyLabel">年間ペナルティ額</p>
           <p class="mt-2 text-2xl font-extrabold tabular-nums" id="kpiPenalty">—</p>
-          <p class="text-[11px] text-slate-500">USD / 年</p>
+          <p class="text-[11px] text-slate-500" id="kpiPenaltySub">USD / 年</p>
         </div>
         <!-- Fuel cost -->
         <div class="glass rounded-2xl p-4 flex flex-col justify-between">
@@ -147,15 +160,48 @@
     </section>
 
     <!-- energy summary strip -->
-    <section class="glass rounded-2xl px-5 py-3 flex flex-wrap items-center gap-x-8 gap-y-2 text-sm">
+    <section class="glass rounded-2xl px-5 py-3 flex flex-wrap items-center gap-x-8 gap-y-2 text-sm" id="energyStrip">
       <div class="flex items-center gap-2"><span class="text-slate-400">年間総エネルギー量:</span><span class="font-semibold text-white tabular-nums" id="kpiEnergy">—</span><span class="text-slate-500 text-xs">MJ</span></div>
       <div class="flex items-center gap-2"><span class="text-slate-400">総燃料量:</span><span class="font-semibold text-white tabular-nums" id="kpiMass">—</span><span class="text-slate-500 text-xs">ton</span></div>
-      <div class="flex items-center gap-2"><span class="text-slate-400">超過 CO₂e:</span><span class="font-semibold text-white tabular-nums" id="kpiExcess">—</span><span class="text-slate-500 text-xs">ton-CO₂e</span></div>
-      <div class="flex items-center gap-2"><span class="text-slate-400">ターゲット差分:</span><span class="font-semibold tabular-nums" id="kpiGap">—</span><span class="text-slate-500 text-xs">g-CO₂e/MJ</span></div>
+      <div class="flex items-center gap-2"><span class="text-slate-400" id="kpiExcessLabel">超過 CO₂e:</span><span class="font-semibold text-white tabular-nums" id="kpiExcess">—</span><span class="text-slate-500 text-xs" id="kpiExcessUnit">ton-CO₂e</span></div>
+      <div class="flex items-center gap-2"><span class="text-slate-400" id="kpiGapLabel">ターゲット差分:</span><span class="font-semibold tabular-nums" id="kpiGap">—</span><span class="text-slate-500 text-xs" id="kpiGapUnit">g-CO₂e/MJ</span></div>
+    </section>
+
+    <!-- ===================== CROSS-REGIME SUMMARY (summary tab only) ===================== -->
+    <section id="summarySection" class="hidden space-y-5">
+      <div class="glass rounded-2xl p-5">
+        <h2 class="text-base font-semibold text-white mb-1">横断サマリ：3制度の規制コスト比較</h2>
+        <p class="text-xs text-slate-400 mb-4">同一の航路・燃料設定に対し、評価年 <span id="sumYear" class="text-accent font-semibold">—</span> 年での各制度の規制コストを並べて比較します（燃料代は共通）。</p>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="text-left text-[11px] uppercase tracking-wider text-slate-400 border-b border-white/10">
+                <th class="py-2 pr-3">制度</th>
+                <th class="py-2 pr-3">適合状況</th>
+                <th class="py-2 pr-3 text-right">規制コスト (USD/年)</th>
+                <th class="py-2 pr-3 text-right">燃料代 (USD/年)</th>
+                <th class="py-2 pr-3 text-right">合計 (USD/年)</th>
+                <th class="py-2 pr-3">主要指標</th>
+              </tr>
+            </thead>
+            <tbody id="summaryTableBody"></tbody>
+          </table>
+        </div>
+        <div class="mt-4 rounded-xl bg-gradient-to-br from-accent/10 to-transparent border border-accent/20 px-4 py-3 flex flex-wrap items-center gap-x-8 gap-y-1">
+          <div><span class="text-[11px] text-accent uppercase tracking-wider font-semibold">合計規制コスト（3制度）</span>
+            <span class="ml-2 text-2xl font-extrabold text-white tabular-nums" id="sumTotalReg">—</span></div>
+          <span class="text-[11px] text-slate-500">※ 制度は併存し得るため単純合算。実際の賦課関係はIMO/EUの最終規則をご確認ください。</span>
+        </div>
+      </div>
+      <div class="glass rounded-2xl p-5">
+        <h2 class="text-base font-semibold text-white mb-1">規制コストの推移（2025→2050）</h2>
+        <p class="text-xs text-slate-400 mb-3">現在の設定のまま年次を進めたときの、各制度の規制コスト（USD/年）の推移。</p>
+        <div class="h-72"><canvas id="summaryChart"></canvas></div>
+      </div>
     </section>
 
     <!-- ===================== ROUTE TABLE ===================== -->
-    <section class="glass rounded-2xl p-5">
+    <section class="glass rounded-2xl p-5" data-regime-hide>
       <div class="flex items-center justify-between mb-4">
         <div>
           <h2 class="text-base font-semibold text-white">航路レグ設定</h2>
@@ -173,10 +219,11 @@
               <th class="py-2 pr-3 w-10">#</th>
               <th class="py-2 pr-3">発地 (From)</th>
               <th class="py-2 pr-3">着地 (To)</th>
+              <th class="py-2 pr-3 w-32">EU適用</th>
               <th class="py-2 pr-2 w-16 text-center">最適化</th>
-              <th class="py-2 pr-3 w-44">必要量</th>
-              <th class="py-2 pr-3 w-56">燃料種別 / ブレンド</th>
-              <th class="py-2 pr-3 w-28 text-right">エネルギー (GJ)</th>
+              <th class="py-2 pr-3 w-40">必要量</th>
+              <th class="py-2 pr-3 w-52">燃料種別 / ブレンド</th>
+              <th class="py-2 pr-3 w-24 text-right">エネルギー (GJ)</th>
               <th class="py-2 w-12"></th>
             </tr>
           </thead>
@@ -196,9 +243,9 @@
     </section>
 
     <!-- ===================== CHARTS ===================== -->
-    <section class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+    <section class="grid grid-cols-1 lg:grid-cols-2 gap-5" data-regime-hide>
       <div class="glass rounded-2xl p-5">
-        <h2 class="text-base font-semibold text-white">GFS ターゲット曲線 vs 実績 CI</h2>
+        <h2 class="text-base font-semibold text-white" id="ciChartTitle">GFS ターゲット曲線 vs 実績 CI</h2>
         <p class="text-xs text-slate-400 mb-3">将来どの時点で実績CIがターゲットを超え、ペナルティが発生するかを可視化します。</p>
         <div class="h-72"><canvas id="ciChart"></canvas></div>
       </div>
@@ -210,7 +257,7 @@
     </section>
 
     <!-- ===================== SENSITIVITY ANALYSIS ===================== -->
-    <section class="glass rounded-2xl p-5">
+    <section class="glass rounded-2xl p-5" data-regime-hide>
       <div class="flex flex-wrap items-start justify-between gap-3 mb-1">
         <div>
           <h2 class="text-base font-semibold text-white">感度分析：燃料ブレンド最適化（最適化スコープ限定）</h2>
@@ -286,11 +333,13 @@
               <table class="w-full text-sm">
                 <thead>
                   <tr class="text-left text-[11px] uppercase tracking-wider text-slate-400 border-b border-white/10">
-                    <th class="py-2 pr-3">燃料名</th>
-                    <th class="py-2 pr-3">LHV (MJ/t)</th>
-                    <th class="py-2 pr-3">WtW CI (g-CO₂e/MJ)</th>
-                    <th class="py-2 pr-3">価格 (USD/t)</th>
-                    <th class="py-2 w-10"></th>
+                    <th class="py-2 pr-2">燃料名</th>
+                    <th class="py-2 pr-2">LHV<br><span class="normal-case text-[9px]">MJ/t</span></th>
+                    <th class="py-2 pr-2">WtW CI<br><span class="normal-case text-[9px]">GFS g/MJ</span></th>
+                    <th class="py-2 pr-2">TtW CO₂<br><span class="normal-case text-[9px]">ETS t/t</span></th>
+                    <th class="py-2 pr-2">WtW GHG<br><span class="normal-case text-[9px]">FuelEU g/MJ</span></th>
+                    <th class="py-2 pr-2">価格<br><span class="normal-case text-[9px]">USD/t</span></th>
+                    <th class="py-2 w-8"></th>
                   </tr>
                 </thead>
                 <tbody id="fuelTableBody"></tbody>
@@ -319,11 +368,35 @@
 
           <!-- Penalty rate -->
           <div>
-            <h3 class="text-sm font-semibold text-accent uppercase tracking-wider mb-3">超過ペナルティ単価</h3>
+            <h3 class="text-sm font-semibold text-accent uppercase tracking-wider mb-3">GFS 超過ペナルティ単価</h3>
             <div class="flex items-center gap-3">
               <input type="number" id="penaltyRate" class="num-input rounded-lg px-3 py-2 w-40 text-white tabular-nums focus:outline-none" />
               <span class="text-sm text-slate-400">USD / ton-CO₂e</span>
             </div>
+          </div>
+
+          <!-- EU ETS params -->
+          <div>
+            <h3 class="text-sm font-semibold text-amber-400 uppercase tracking-wider mb-3">EU ETS パラメータ</h3>
+            <div class="flex flex-wrap items-end gap-4">
+              <div><label class="block text-[11px] text-slate-400 mb-1">EUA価格 (€/t-CO₂)</label><input type="number" id="etsEua" step="1" class="num-input rounded-lg px-3 py-2 w-32 text-white text-sm tabular-nums focus:outline-none" /></div>
+              <div><label class="block text-[11px] text-slate-400 mb-1">EUR→USD</label><input type="number" id="etsEurUsd" step="0.01" class="num-input rounded-lg px-3 py-2 w-24 text-white text-sm tabular-nums focus:outline-none" /></div>
+            </div>
+            <p class="text-[11px] text-slate-400 mt-3 mb-1">フェーズイン率（排出量の課金割合）</p>
+            <div class="grid grid-cols-3 sm:grid-cols-3 gap-3" id="etsPhaseGrid"></div>
+          </div>
+
+          <!-- FuelEU params -->
+          <div>
+            <h3 class="text-sm font-semibold text-violet-400 uppercase tracking-wider mb-3">FuelEU Maritime パラメータ</h3>
+            <div class="flex flex-wrap items-end gap-4">
+              <div><label class="block text-[11px] text-slate-400 mb-1">基準GHG強度 (g/MJ)</label><input type="number" id="feuBaseline" step="0.01" class="num-input rounded-lg px-3 py-2 w-28 text-white text-sm tabular-nums focus:outline-none" /></div>
+              <div><label class="block text-[11px] text-slate-400 mb-1">ペナルティ (€/t-VLSFO)</label><input type="number" id="feuPenalty" step="10" class="num-input rounded-lg px-3 py-2 w-32 text-white text-sm tabular-nums focus:outline-none" /></div>
+              <div><label class="block text-[11px] text-slate-400 mb-1">VLSFO LHV (MJ/t)</label><input type="number" id="feuVlsfo" step="100" class="num-input rounded-lg px-3 py-2 w-28 text-white text-sm tabular-nums focus:outline-none" /></div>
+              <div><label class="block text-[11px] text-slate-400 mb-1">EUR→USD</label><input type="number" id="feuEurUsd" step="0.01" class="num-input rounded-lg px-3 py-2 w-24 text-white text-sm tabular-nums focus:outline-none" /></div>
+            </div>
+            <p class="text-[11px] text-slate-400 mt-3 mb-1">GHG強度 削減率（基準比）</p>
+            <div class="grid grid-cols-3 sm:grid-cols-6 gap-3" id="feuReductionGrid"></div>
           </div>
 
           <div class="flex justify-end gap-3 pt-2">
@@ -338,32 +411,58 @@
 <script>
 /* ============================================================
    DEFAULT MASTER DATA
+   Fuel attributes shared by all three regimes:
+     ci    : WtW carbon intensity  g-CO2e/MJ        (GFS)
+     co2tw : TtW CO2 emission factor t-CO2 / t-fuel (EU ETS, combustion only)
+     ghg   : WtW GHG intensity     g-CO2e/MJ        (FuelEU Maritime)
+   Representative placeholder values — edit in the settings panel.
 ============================================================ */
 const DEFAULT_FUELS = [
-  { name: 'HFO',              lhv: 40000, ci: 89.0, price: 550  },
-  { name: 'LNG',              lhv: 48000, ci: 67.0, price: 750  },
-  { name: 'グレーメタノール',  lhv: 19900, ci: 96.0, price: 420  },
-  { name: 'グリーンメタノール', lhv: 19900, ci: 18.0, price: 1250 },
-  { name: 'エタノール',        lhv: 26800, ci: 38.0, price: 950  },
-  { name: 'e-アンモニア',      lhv: 18000, ci: 0.0,  price: 1300 },
+  { name: 'HFO',              lhv: 40000, ci: 89.0, co2tw: 3.114, ghg: 91.6, price: 550  },
+  { name: 'LNG',              lhv: 48000, ci: 67.0, co2tw: 2.750, ghg: 76.0, price: 750  },
+  { name: 'グレーメタノール',  lhv: 19900, ci: 96.0, co2tw: 1.375, ghg: 96.0, price: 420  },
+  { name: 'グリーンメタノール', lhv: 19900, ci: 18.0, co2tw: 0.000, ghg: 18.0, price: 1250 },
+  { name: 'エタノール',        lhv: 26800, ci: 38.0, co2tw: 0.000, ghg: 38.0, price: 950  },
+  { name: 'e-アンモニア',      lhv: 18000, ci: 0.0,  co2tw: 0.000, ghg: 0.0,  price: 1300 },
 ];
 
 const DEFAULT_TARGETS = { 2026: 85.0, 2030: 75.0, 2035: 55.0, 2040: 30.0, 2050: 0.0 };
 const DEFAULT_PENALTY_RATE = 150;
 
+// EU ETS parameters (representative placeholders — editable in settings).
+const DEFAULT_ETS = {
+  euaPrice: 80,        // EUA price, EUR / t-CO2
+  eurUsd: 1.08,        // EUR -> USD
+  phaseIn: { 2025: 0.70, 2026: 1.00, 2050: 1.00 },  // share of emissions surrendered (interpolated)
+};
+
+// FuelEU Maritime parameters (representative placeholders — editable in settings).
+const DEFAULT_FUELEU = {
+  baseline: 91.16,     // reference WtW GHG intensity, g-CO2e/MJ
+  // GHG-intensity reduction vs baseline (fraction).
+  reduction: { 2025: 0.02, 2030: 0.06, 2035: 0.145, 2040: 0.31, 2045: 0.62, 2050: 0.80 },
+  penaltyEURperVLSFOt: 2400,  // EUR per tonne VLSFO-equivalent of compliance deficit
+  vlsfoLHV: 41000,            // MJ / t (VLSFO energy content used in the penalty formula)
+  eurUsd: 1.08,
+};
+
+// EU geographic scope coefficients: share of a leg's emissions/energy chargeable under EU rules.
+const EU_SCOPE = { in: 1.0, inout: 0.5, out: 0.0 };
+const EU_SCOPE_LABEL = { in: 'EU域内 (100%)', inout: 'EU出入 (50%)', out: '域外 (0%)' };
+
 // レグモデル:
-//  固定レグ        : { from, to, optimize:false, mass, fuel }
-//  最適化レグ(blend): { from, to, optimize:true, energyMJ, blend:[{fuel, pct}, ...] }
+//  固定レグ        : { from, to, optimize:false, mass, fuel, euScope }
+//  最適化レグ(blend): { from, to, optimize:true, energyMJ, blend:[{fuel, pct}, ...], euScope }
 const DEFAULT_LEGS = [
   // 行き: 日本→米国。次世代燃料をブレンドして最適化検討するスコープ。
-  { from: 'Chiba-JP', to: 'Houston-US', optimize: true, energyMJ: 40000000,
+  { from: 'Chiba-JP', to: 'Houston-US', optimize: true, energyMJ: 40000000, euScope: 'inout',
     blend: [
       { fuel: 'グレーメタノール',  pct: 25 },
       { fuel: 'グリーンメタノール', pct: 60 },
       { fuel: 'エタノール',        pct: 15 },
     ] },
   // 帰り: 米国→日本。HFO 固定（最適化対象外だが全体評価には算入）。
-  { from: 'Houston-US', to: 'Chiba-JP', optimize: false, mass: 1000, fuel: 'HFO' },
+  { from: 'Houston-US', to: 'Chiba-JP', optimize: false, mass: 1000, fuel: 'HFO', euScope: 'inout' },
 ];
 
 // 寄港地マスタ（発地/着地はここから選択）
@@ -378,9 +477,12 @@ const MAX_LEGS = 10;
 let fuels   = structuredClone(DEFAULT_FUELS);
 let targets = { ...DEFAULT_TARGETS };
 let penaltyRate = DEFAULT_PENALTY_RATE;
+let ets     = structuredClone(DEFAULT_ETS);
+let fueleu  = structuredClone(DEFAULT_FUELEU);
 let ports   = [...DEFAULT_PORTS];
 let legs    = structuredClone(DEFAULT_LEGS);
 let currentYear = 2030;
+let activeRegime = 'gfs';   // 'gfs' | 'ets' | 'fueleu' | 'summary'
 
 /* ============================================================
    HELPERS
@@ -397,27 +499,48 @@ const MAX_BLEND = 4;   // max fuels blended within one optimize leg
 function isOptimizeLeg(leg) { return !!leg.optimize; }
 
 // Normalise any leg (legacy fixed or new blend) into a consistent breakdown.
-// Returns { energy(MJ), mass(ton), ciWeighted(=Σ E*CI), cost(USD), perFuel:[{fuel,mass,energy}] }.
+// Returns energy(MJ), mass(ton), cost(USD), ciWeighted(=Σ E*CI, GFS), ghgWeighted(=Σ E*GHG,
+// FuelEU), co2tw(=Σ m*co2tw, EU ETS), and a euCoef (scope share 0/0.5/1), plus perFuel.
+function euCoef(leg) {
+  const k = leg.euScope || 'in';
+  return (EU_SCOPE[k] != null) ? EU_SCOPE[k] : 1.0;
+}
 function legBreakdown(leg) {
-  let energy = 0, mass = 0, ciWeighted = 0, cost = 0;
+  let energy = 0, mass = 0, ciWeighted = 0, ghgWeighted = 0, co2tw = 0, cost = 0;
   const perFuel = [];
+  const add = (fuelName, e) => {
+    const f = fuelByName(fuelName);
+    const m = f.lhv > 0 ? e / f.lhv : 0;
+    energy += e; mass += m; cost += m * f.price;
+    ciWeighted += e * (f.ci || 0);
+    ghgWeighted += e * (f.ghg != null ? f.ghg : f.ci || 0);
+    co2tw += m * (f.co2tw || 0);
+    perFuel.push({ fuel: fuelName, mass: m, energy: e });
+  };
   if (isOptimizeLeg(leg)) {
     const E = Number(leg.energyMJ) || 0;                 // fixed energy demand
-    (leg.blend || []).forEach(b => {
-      const f = fuelByName(b.fuel);
-      const e = E * (Number(b.pct) || 0) / 100;          // energy from this fuel
-      const m = f.lhv > 0 ? e / f.lhv : 0;               // ton back-calculated from LHV
-      energy += e; mass += m; ciWeighted += e * f.ci; cost += m * f.price;
-      perFuel.push({ fuel: b.fuel, mass: m, energy: e });
-    });
+    (leg.blend || []).forEach(b => add(b.fuel, E * (Number(b.pct) || 0) / 100));
   } else {
     const f = fuelByName(leg.fuel);
-    const m = Number(leg.mass) || 0;
-    const e = m * f.lhv;
-    energy = e; mass = m; ciWeighted = e * f.ci; cost = m * f.price;
-    perFuel.push({ fuel: leg.fuel, mass: m, energy: e });
+    add(leg.fuel, (Number(leg.mass) || 0) * f.lhv);
   }
-  return { energy, mass, ciWeighted, cost, perFuel };
+  return { energy, mass, ciWeighted, ghgWeighted, co2tw, cost, perFuel, euCoef: euCoef(leg) };
+}
+
+// Generic linear interpolation over an anchor map { year: value }.
+function interpAnchors(map, year) {
+  const anchors = Object.keys(map).map(Number).sort((a, b) => a - b);
+  if (anchors.length === 0) return 0;
+  if (year <= anchors[0]) return map[anchors[0]];
+  if (year >= anchors[anchors.length - 1]) return map[anchors[anchors.length - 1]];
+  for (let i = 0; i < anchors.length - 1; i++) {
+    const y0 = anchors[i], y1 = anchors[i + 1];
+    if (year >= y0 && year <= y1) {
+      const t = (year - y0) / (y1 - y0);
+      return map[y0] + (map[y1] - map[y0]) * t;
+    }
+  }
+  return map[anchors[anchors.length - 1]];
 }
 
 // Sum of blend percentages for an optimize leg (for validation display).
@@ -434,26 +557,58 @@ function portOptions(selected) {
 }
 
 // Linear interpolation of GFS target CI for any year
-function interpolateTarget(year) {
-  const anchors = Object.keys(targets).map(Number).sort((a, b) => a - b);
-  if (anchors.length === 0) return 0;
-  if (year <= anchors[0]) return targets[anchors[0]];
-  if (year >= anchors[anchors.length - 1]) return targets[anchors[anchors.length - 1]];
-  for (let i = 0; i < anchors.length - 1; i++) {
-    const y0 = anchors[i], y1 = anchors[i + 1];
-    if (year >= y0 && year <= y1) {
-      const v0 = targets[y0], v1 = targets[y1];
-      const t = (year - y0) / (y1 - y0);
-      return v0 + (v1 - v0) * t;
-    }
-  }
-  return targets[anchors[anchors.length - 1]];
+function interpolateTarget(year) { return interpAnchors(targets, year); }
+
+/* ============================================================
+   REGIME CALCULATORS (EU ETS / FuelEU Maritime)
+   Both apply the per-leg EU scope coefficient (in/inout/out).
+============================================================ */
+// EU ETS: chargeable TtW CO2 (t) = Σ leg co2tw * euCoef; cost = CO2 * phaseIn * EUA price (EUR->USD)
+function calcETS(year) {
+  let chargeableCO2 = 0, fuelCost = 0, totalEnergy = 0, grossCO2 = 0;
+  legs.forEach(leg => {
+    const bd = legBreakdown(leg);
+    fuelCost += bd.cost; totalEnergy += bd.energy; grossCO2 += bd.co2tw;
+    chargeableCO2 += bd.co2tw * bd.euCoef;
+  });
+  const phaseIn = interpAnchors(ets.phaseIn, year);
+  const euaUSD = (ets.euaPrice || 0) * (ets.eurUsd || 1);
+  const surrenderedCO2 = chargeableCO2 * phaseIn;
+  const etsCost = surrenderedCO2 * euaUSD;
+  return { chargeableCO2, grossCO2, surrenderedCO2, phaseIn, euaUSD, etsCost, fuelCost, totalEnergy,
+           totalCost: fuelCost + etsCost };
+}
+
+// FuelEU: actual WtW GHG intensity vs baseline*(1-reduction); penalty via VLSFO-equivalent formula.
+function calcFuelEU(year) {
+  let scopedEnergy = 0, scopedGhgWeighted = 0, fuelCost = 0, totalEnergy = 0, wholeGhgWeighted = 0;
+  legs.forEach(leg => {
+    const bd = legBreakdown(leg);
+    fuelCost += bd.cost; totalEnergy += bd.energy; wholeGhgWeighted += bd.ghgWeighted;
+    scopedEnergy += bd.energy * bd.euCoef;
+    scopedGhgWeighted += bd.ghgWeighted * bd.euCoef;   // energy-weighted, scope-adjusted
+  });
+  const reduction = interpAnchors(fueleu.reduction, year);
+  const targetGhg = (fueleu.baseline || 0) * (1 - reduction);
+  const actualGhg = scopedEnergy > 0 ? scopedGhgWeighted / scopedEnergy : 0;   // intensity is energy-weighted; coef cancels but kept explicit
+  const wholeGhg = totalEnergy > 0 ? wholeGhgWeighted / totalEnergy : 0;
+  const gap = actualGhg - targetGhg;                  // >0 = deficit
+  const compliant = gap <= 1e-9;
+  // Compliance balance (g-CO2e) over the scoped energy.
+  const deficitGCO2e = Math.max(0, gap) * scopedEnergy;          // g
+  // Penalty (EUR) = (deficit_gCO2e) / (actualGhg * VLSFO_LHV) * 2400   [VLSFO-equivalent tonnes * 2400]
+  const denom = (actualGhg > 0 ? actualGhg : 1) * (fueleu.vlsfoLHV || 41000);
+  const vlsfoEqT = denom > 0 ? deficitGCO2e / denom : 0;
+  const penaltyEUR = vlsfoEqT * (fueleu.penaltyEURperVLSFOt || 2400);
+  const penaltyUSD = penaltyEUR * (fueleu.eurUsd || 1);
+  return { reduction, targetGhg, actualGhg, wholeGhg, gap, compliant, deficitGCO2e, vlsfoEqT,
+           penaltyUSD, fuelCost, totalEnergy, scopedEnergy, totalCost: fuelCost + penaltyUSD };
 }
 
 /* ============================================================
    CORE CALCULATION
 ============================================================ */
-function calculate() {
+function calculate(year = currentYear) {
   let totalEnergy = 0;          // MJ
   let weightedCi  = 0;          // sum(E * CI)
   let totalMass   = 0;          // ton
@@ -474,7 +629,7 @@ function calculate() {
   });
 
   const ciAvg  = totalEnergy > 0 ? weightedCi / totalEnergy : 0;
-  const target = interpolateTarget(currentYear);
+  const target = interpolateTarget(year);
   const gap    = ciAvg - target;
   const compliant = ciAvg <= target;
 
@@ -493,40 +648,104 @@ function calculate() {
 /* ============================================================
    RENDER: KPI
 ============================================================ */
-function renderKPI(r) {
-  $('targetCiValue').textContent = fmtNum(r.target, 1);
-  $('kpiCi').textContent = fmtNum(r.ciAvg, 1);
-  $('kpiPenalty').textContent = r.penalty > 0 ? fmtUSD(r.penalty) : '$0';
-  $('kpiPenalty').className = 'mt-2 text-2xl font-extrabold tabular-nums ' + (r.penalty > 0 ? 'text-rose-400' : 'text-emerald-400');
-  $('kpiFuelCost').textContent = fmtUSD(r.fuelCost);
-  $('kpiTotalCost').textContent = fmtUSD(r.totalCost);
-  $('kpiEnergy').textContent = fmtNum(r.totalEnergy);
-  $('kpiMass').textContent = fmtNum(r.totalMass);
-  $('kpiExcess').textContent = fmtNum(Math.max(r.excessCO2e, 0), 1);
-
-  $('kpiGap').textContent = (r.gap >= 0 ? '+' : '') + fmtNum(r.gap, 1);
-  $('kpiGap').className = 'font-semibold tabular-nums ' + (r.compliant ? 'text-emerald-400' : 'text-rose-400');
-
-  // scope-internal summary (only when there is at least one optimize leg)
-  const scopeBox = $('scopeSummary');
-  if (r.scopeLegCount > 0) {
-    scopeBox.classList.remove('hidden');
-    $('scopeEnergy').textContent = fmtNum(r.scopeEnergy);
-    $('scopeMass').textContent = fmtNum(r.scopeMass);
-    $('scopeCost').textContent = fmtUSD(r.scopeCost);
-  } else {
-    scopeBox.classList.add('hidden');
-  }
-
+function setBadge(compliant, complianceText) {
   const badge = $('complianceBadge'), dot = $('complianceDot'), text = $('complianceText');
-  if (r.compliant) {
+  if (compliant) {
     badge.className = 'mt-2 inline-flex w-fit items-center gap-2 rounded-full px-3 py-1.5 text-sm font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-400/30';
     dot.className = 'h-2.5 w-2.5 rounded-full bg-emerald-400';
-    text.textContent = '適合 (Compliant)';
   } else {
     badge.className = 'mt-2 inline-flex w-fit items-center gap-2 rounded-full px-3 py-1.5 text-sm font-bold bg-rose-500/15 text-rose-300 border border-rose-400/30';
     dot.className = 'h-2.5 w-2.5 rounded-full bg-rose-400 animate-pulse';
-    text.textContent = '未達 (Deficit)';
+  }
+  text.textContent = complianceText;
+}
+
+function renderKPI() {
+  // shared scope summary (optimize legs)
+  const g = calculate();
+  const scopeBox = $('scopeSummary');
+  if (g.scopeLegCount > 0) {
+    scopeBox.classList.remove('hidden');
+    $('scopeEnergy').textContent = fmtNum(g.scopeEnergy);
+    $('scopeMass').textContent = fmtNum(g.scopeMass);
+    $('scopeCost').textContent = fmtUSD(g.scopeCost);
+  } else {
+    scopeBox.classList.add('hidden');
+  }
+  $('kpiEnergy').textContent = fmtNum(g.totalEnergy);
+  $('kpiMass').textContent = fmtNum(g.totalMass);
+
+  if (activeRegime === 'ets') {
+    const r = calcETS(currentYear);
+    $('targetLabel').textContent = '該当年 フェーズイン率';
+    $('targetCiValue').textContent = fmtNum(r.phaseIn * 100, 0);
+    $('targetUnit').textContent = '%';
+    $('targetNote').textContent = 'EUA ' + fmtNum(ets.euaPrice) + '€/t';
+    $('kpiCiLabel').textContent = '課金対象CO₂';
+    $('kpiCi').textContent = fmtNum(r.surrenderedCO2, 0);
+    $('kpiCiUnit').textContent = 't-CO₂';
+    $('kpiPenaltyLabel').textContent = 'EU ETS 費用';
+    $('kpiPenalty').textContent = fmtUSD(r.etsCost);
+    $('kpiPenalty').className = 'mt-2 text-2xl font-extrabold tabular-nums ' + (r.etsCost > 0 ? 'text-rose-400' : 'text-emerald-400');
+    $('kpiPenaltySub').textContent = 'EUA購入コスト USD/年';
+    $('kpiFuelCost').textContent = fmtUSD(r.fuelCost);
+    $('kpiTotalCost').textContent = fmtUSD(r.totalCost);
+    $('kpiExcessLabel').textContent = '総排出CO₂(TtW):';
+    $('kpiExcess').textContent = fmtNum(r.grossCO2, 0);
+    $('kpiExcessUnit').textContent = 't-CO₂';
+    $('kpiGapLabel').textContent = 'EU課金対象分:';
+    $('kpiGap').textContent = fmtNum(r.chargeableCO2, 0);
+    $('kpiGap').className = 'font-semibold tabular-nums text-slate-200';
+    $('kpiGapUnit').textContent = 't-CO₂';
+    setBadge(true, 'ETSは罰則型でなく炭素価格型');
+    $('complianceText').textContent = '炭素価格 (キャップ&トレード)';
+  } else if (activeRegime === 'fueleu') {
+    const r = calcFuelEU(currentYear);
+    $('targetLabel').textContent = '該当年 FuelEU 目標GHG強度';
+    $('targetCiValue').textContent = fmtNum(r.targetGhg, 1);
+    $('targetUnit').textContent = 'g-CO₂e/MJ';
+    $('targetNote').textContent = '削減率 ' + fmtNum(r.reduction * 100, 1) + '%';
+    $('kpiCiLabel').textContent = '実績 GHG強度';
+    $('kpiCi').textContent = fmtNum(r.actualGhg, 1);
+    $('kpiCiUnit').textContent = 'g-CO₂e/MJ';
+    $('kpiPenaltyLabel').textContent = 'FuelEU ペナルティ';
+    $('kpiPenalty').textContent = r.penaltyUSD > 0 ? fmtUSD(r.penaltyUSD) : '$0';
+    $('kpiPenalty').className = 'mt-2 text-2xl font-extrabold tabular-nums ' + (r.penaltyUSD > 0 ? 'text-rose-400' : 'text-emerald-400');
+    $('kpiPenaltySub').textContent = 'VLSFO等価ペナルティ USD/年';
+    $('kpiFuelCost').textContent = fmtUSD(r.fuelCost);
+    $('kpiTotalCost').textContent = fmtUSD(r.totalCost);
+    $('kpiExcessLabel').textContent = 'コンプラ不足量:';
+    $('kpiExcess').textContent = fmtNum(r.vlsfoEqT, 1);
+    $('kpiExcessUnit').textContent = 't-VLSFO等価';
+    $('kpiGapLabel').textContent = '目標差分:';
+    $('kpiGap').textContent = (r.gap >= 0 ? '+' : '') + fmtNum(r.gap, 1);
+    $('kpiGap').className = 'font-semibold tabular-nums ' + (r.compliant ? 'text-emerald-400' : 'text-rose-400');
+    $('kpiGapUnit').textContent = 'g-CO₂e/MJ';
+    setBadge(r.compliant, r.compliant ? '適合 (Compliant)' : '未達 (Deficit)');
+  } else {
+    // GFS
+    const r = calculate();
+    $('targetLabel').textContent = '該当年 GFS ターゲット CI';
+    $('targetCiValue').textContent = fmtNum(r.target, 1);
+    $('targetUnit').textContent = 'g-CO₂e/MJ';
+    $('targetNote').textContent = '線形補間適用';
+    $('kpiCiLabel').textContent = '実績 CI';
+    $('kpiCi').textContent = fmtNum(r.ciAvg, 1);
+    $('kpiCiUnit').textContent = 'g-CO₂e/MJ';
+    $('kpiPenaltyLabel').textContent = '年間ペナルティ額';
+    $('kpiPenalty').textContent = r.penalty > 0 ? fmtUSD(r.penalty) : '$0';
+    $('kpiPenalty').className = 'mt-2 text-2xl font-extrabold tabular-nums ' + (r.penalty > 0 ? 'text-rose-400' : 'text-emerald-400');
+    $('kpiPenaltySub').textContent = 'USD / 年';
+    $('kpiFuelCost').textContent = fmtUSD(r.fuelCost);
+    $('kpiTotalCost').textContent = fmtUSD(r.totalCost);
+    $('kpiExcessLabel').textContent = '超過 CO₂e:';
+    $('kpiExcess').textContent = fmtNum(Math.max(r.excessCO2e, 0), 1);
+    $('kpiExcessUnit').textContent = 'ton-CO₂e';
+    $('kpiGapLabel').textContent = 'ターゲット差分:';
+    $('kpiGap').textContent = (r.gap >= 0 ? '+' : '') + fmtNum(r.gap, 1);
+    $('kpiGap').className = 'font-semibold tabular-nums ' + (r.compliant ? 'text-emerald-400' : 'text-rose-400');
+    $('kpiGapUnit').textContent = 'g-CO₂e/MJ';
+    setBadge(r.compliant, r.compliant ? '適合 (Compliant)' : '未達 (Deficit)');
   }
 }
 
@@ -566,6 +785,9 @@ function renderLegTable() {
       <td class="py-2 pr-3 text-slate-500 tabular-nums align-top pt-3.5">${i + 1}</td>
       <td class="py-2 pr-3 align-top"><select data-i="${i}" data-k="from" class="num-input rounded-md px-2 py-1.5 w-full text-white text-sm focus:outline-none">${portOptions(leg.from)}</select></td>
       <td class="py-2 pr-3 align-top"><select data-i="${i}" data-k="to" class="num-input rounded-md px-2 py-1.5 w-full text-white text-sm focus:outline-none">${portOptions(leg.to)}</select></td>
+      <td class="py-2 pr-3 align-top"><select data-i="${i}" data-k="euScope" class="num-input rounded-md px-2 py-1.5 w-full text-white text-sm focus:outline-none" title="EU ETS/FuelEUの課金係数（域内100%/出入50%/域外0%）">
+        ${Object.keys(EU_SCOPE).map(k => `<option value="${k}" ${(leg.euScope || 'in') === k ? 'selected' : ''}>${EU_SCOPE_LABEL[k]}</option>`).join('')}
+      </select></td>
       <td class="py-2 pr-2 text-center align-top pt-3"><input data-i="${i}" data-k="optimize" type="checkbox" ${opt ? 'checked' : ''} class="h-4 w-4 accent-sky-400 cursor-pointer" title="このレグを最適化スコープに含める" /></td>
       <td class="py-2 pr-3 align-top">${amountCell}</td>
       <td class="py-2 pr-3 align-top">${fuelCell}</td>
@@ -595,7 +817,7 @@ function renderLegTable() {
       }).join('');
       sub.innerHTML = `
         <td></td>
-        <td colspan="7" class="py-2 pr-3">
+        <td colspan="8" class="py-2 pr-3">
           <div class="rounded-lg border border-white/5 bg-navy-900/50 px-3 py-2.5">
             <div class="flex items-center justify-between mb-2">
               <span class="text-[11px] uppercase tracking-wider text-accent font-semibold">ブレンド構成（必要エネルギーを%配分）</span>
@@ -640,8 +862,17 @@ function bindLegEvents() {
     const evt = el.tagName === 'SELECT' ? 'change' : 'input';
     el.addEventListener(evt, (e) => {
       const i = +e.target.dataset.leg, bi = +e.target.dataset.bi, bk = e.target.dataset.bk;
-      if (bk === 'pct') legs[i].blend[bi].pct = parseFloat(e.target.value) || 0;
-      else legs[i].blend[bi].fuel = e.target.value;
+      if (bk === 'pct') {
+        // Clamp so the blend total never exceeds 100% (this fuel is capped by the room left).
+        const others = legs[i].blend.reduce((s, b, idx) => s + (idx === bi ? 0 : (Number(b.pct) || 0)), 0);
+        const room = Math.max(0, 100 - others);
+        let v = parseFloat(e.target.value) || 0;
+        if (v < 0) v = 0;
+        if (v > room) { v = room; e.target.value = v; }   // snap field back to the allowed max
+        legs[i].blend[bi].pct = v;
+      } else {
+        legs[i].blend[bi].fuel = e.target.value;
+      }
       if (bk === 'pct') { refreshLegDerived(i); refreshBlendSums(i); }
       update(false);
     });
@@ -705,7 +936,7 @@ function refreshLegDerived(i) {
   for (const tr of rows) {
     if (tr.querySelector(`[data-i="${i}"]`) && !tr.querySelector('[data-leg]')) { rowEl = tr; break; }
   }
-  if (rowEl) rowEl.children[6].textContent = fmtNum(bd.energy / 1000);
+  if (rowEl) rowEl.children[7].textContent = fmtNum(bd.energy / 1000);
   // refresh per-fuel ton hints in the blend sub-row
   legs[i].blend && legs[i].blend.forEach((b, bi) => {
     const pctEl = $('legTableBody').querySelector(`[data-leg="${i}"][data-bi="${bi}"][data-bk="pct"]`);
@@ -724,14 +955,14 @@ function refreshBlendSums(i) {
   const rows = $('legTableBody').querySelectorAll('tr');
   for (const tr of rows) {
     const cb = tr.querySelector(`[data-i="${i}"][data-k="optimize"]`);
-    if (cb) { const span = tr.children[5].querySelector('span'); if (span) { span.textContent = `ブレンド ${legs[i].blend.length}種・合計 ${fmtNum(sum)}%${ok ? '' : ' ⚠'}`; span.className = `text-xs ${ok ? 'text-slate-300' : 'text-amber-400'}`; } break; }
+    if (cb) { const span = tr.children[6].querySelector('span'); if (span) { span.textContent = `ブレンド ${legs[i].blend.length}種・合計 ${fmtNum(sum)}%${ok ? '' : ' ⚠'}`; span.className = `text-xs ${ok ? 'text-slate-300' : 'text-amber-400'}`; } break; }
   }
 }
 
 /* ============================================================
    CHARTS
 ============================================================ */
-let ciChart, bunkerChart, sensChart;
+let ciChart, bunkerChart, sensChart, summaryChart;
 
 /* ============================================================
    SENSITIVITY ANALYSIS STATE
@@ -809,14 +1040,27 @@ function chartBaseOptions(yTitle) {
   };
 }
 
-function updateCiChart(r) {
+function updateCiChart() {
   const years = ciChart.data.labels;
-  ciChart.data.datasets[0].data = years.map(y => interpolateTarget(y));
-  ciChart.data.datasets[1].data = years.map(() => r.ciAvg);
-  // highlight current year point on the actual-CI line
-  ciChart.data.datasets[2].data = [{ x: currentYear, y: r.ciAvg }];
-  // color point by compliance
-  const col = r.compliant ? '#34d399' : '#f43f5e';
+  // Regime-aware overlay: GFS uses CI vs target; FuelEU uses GHG vs reduced baseline;
+  // ETS has no intensity standard, so we show CI as an informational reference.
+  let actual, targetFn, compliant, label;
+  if (activeRegime === 'fueleu') {
+    const f = calcFuelEU(currentYear);
+    actual = f.actualGhg; compliant = f.compliant;
+    targetFn = (y) => fueleu.baseline * (1 - interpAnchors(fueleu.reduction, y));
+    label = 'FuelEU 目標GHG強度';
+  } else {
+    const g = calculate();
+    actual = g.ciAvg; compliant = g.compliant;
+    targetFn = (y) => interpolateTarget(y);
+    label = activeRegime === 'ets' ? 'GFS CI（参考）' : 'GFS ターゲット CI';
+  }
+  ciChart.data.datasets[0].label = label;
+  ciChart.data.datasets[0].data = years.map(y => targetFn(y));
+  ciChart.data.datasets[1].data = years.map(() => actual);
+  ciChart.data.datasets[2].data = [{ x: currentYear, y: actual }];
+  const col = compliant ? '#34d399' : '#f43f5e';
   ciChart.data.datasets[2].borderColor = col;
   ciChart.data.datasets[2].backgroundColor = col;
   ciChart.update('none');
@@ -904,6 +1148,38 @@ function sensPoint(massA, A, B, E, target, fixed) {
   const penalty = Math.max(0, ciAvg - target) * (totalEnergy / 1e6) * penaltyRate;
   const total = fixed.cost + scopeCost + penalty;     // whole-voyage total cost
   return { massA, massB: mB, ciAvg, scopeCost, fuelCost: fixed.cost + scopeCost, penalty, total };
+}
+
+function buildSummaryChart() {
+  const ctx = $('summaryChart').getContext('2d');
+  summaryChart = new Chart(ctx, {
+    type: 'line',
+    data: { labels: [], datasets: [
+      { label: 'IMO GFS 罰金', data: [], borderColor: '#38bdf8', backgroundColor: 'rgba(56,189,248,0.06)', borderWidth: 2.5, pointRadius: 0, tension: 0.2 },
+      { label: 'EU ETS 費用', data: [], borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.06)', borderWidth: 2.5, pointRadius: 0, tension: 0.2 },
+      { label: 'FuelEU ペナルティ', data: [], borderColor: '#a78bfa', backgroundColor: 'rgba(167,139,250,0.06)', borderWidth: 2.5, pointRadius: 0, tension: 0.2 },
+      { label: '合計規制コスト', data: [], borderColor: '#34d399', backgroundColor: 'rgba(52,211,153,0.10)', borderWidth: 3, pointRadius: 0, tension: 0.2, borderDash: [5, 3] },
+    ] },
+    options: {
+      ...chartBaseOptions('規制コスト (USD/年)'),
+      scales: {
+        x: { grid: { color: 'rgba(148,163,184,0.06)' }, ticks: { color: '#94a3b8', font: { size: 11 }, maxTicksLimit: 13 } },
+        y: { beginAtZero: true, grid: { color: 'rgba(148,163,184,0.06)' }, ticks: { color: '#94a3b8', font: { size: 11 }, callback: (v) => '$' + Math.round(v).toLocaleString('en-US') }, title: { display: true, text: '規制コスト (USD/年)', color: '#64748b', font: { size: 11 } } },
+      },
+    },
+  });
+}
+
+function updateSummaryChart() {
+  if (!summaryChart) return;
+  const years = [];
+  for (let y = 2025; y <= 2050; y++) years.push(y);
+  summaryChart.data.labels = years;
+  summaryChart.data.datasets[0].data = years.map(y => calculate(y).penalty);
+  summaryChart.data.datasets[1].data = years.map(y => calcETS(y).etsCost);
+  summaryChart.data.datasets[2].data = years.map(y => calcFuelEU(y).penaltyUSD);
+  summaryChart.data.datasets[3].data = years.map(y => calculate(y).penalty + calcETS(y).etsCost + calcFuelEU(y).penaltyUSD);
+  summaryChart.update('none');
 }
 
 function buildSensChart() {
@@ -1024,10 +1300,12 @@ function renderSettings() {
     const tr = document.createElement('tr');
     tr.className = 'border-b border-white/5';
     tr.innerHTML = `
-      <td class="py-2 pr-3"><input data-i="${i}" data-k="name" type="text" value="${f.name}" class="num-input rounded-md px-2 py-1.5 w-full text-white text-sm focus:outline-none" /></td>
-      <td class="py-2 pr-3"><input data-i="${i}" data-k="lhv" type="number" step="100" value="${f.lhv}" class="num-input rounded-md px-2 py-1.5 w-full text-white text-sm tabular-nums focus:outline-none" /></td>
-      <td class="py-2 pr-3"><input data-i="${i}" data-k="ci" type="number" step="0.1" value="${f.ci}" class="num-input rounded-md px-2 py-1.5 w-full text-white text-sm tabular-nums focus:outline-none" /></td>
-      <td class="py-2 pr-3"><input data-i="${i}" data-k="price" type="number" step="10" value="${f.price}" class="num-input rounded-md px-2 py-1.5 w-full text-white text-sm tabular-nums focus:outline-none" /></td>
+      <td class="py-2 pr-2"><input data-i="${i}" data-k="name" type="text" value="${f.name}" class="num-input rounded-md px-2 py-1.5 w-full text-white text-sm focus:outline-none" /></td>
+      <td class="py-2 pr-2"><input data-i="${i}" data-k="lhv" type="number" step="100" value="${f.lhv}" class="num-input rounded-md px-2 py-1.5 w-20 text-white text-sm tabular-nums focus:outline-none" /></td>
+      <td class="py-2 pr-2"><input data-i="${i}" data-k="ci" type="number" step="0.1" value="${f.ci}" class="num-input rounded-md px-2 py-1.5 w-16 text-white text-sm tabular-nums focus:outline-none" /></td>
+      <td class="py-2 pr-2"><input data-i="${i}" data-k="co2tw" type="number" step="0.001" value="${f.co2tw ?? 0}" class="num-input rounded-md px-2 py-1.5 w-16 text-white text-sm tabular-nums focus:outline-none" /></td>
+      <td class="py-2 pr-2"><input data-i="${i}" data-k="ghg" type="number" step="0.1" value="${f.ghg ?? f.ci}" class="num-input rounded-md px-2 py-1.5 w-16 text-white text-sm tabular-nums focus:outline-none" /></td>
+      <td class="py-2 pr-2"><input data-i="${i}" data-k="price" type="number" step="10" value="${f.price}" class="num-input rounded-md px-2 py-1.5 w-20 text-white text-sm tabular-nums focus:outline-none" /></td>
       <td class="py-2 text-right"><button data-delfuel="${i}" class="text-slate-500 hover:text-rose-400 p-1" title="削除"${fuels.length <= 1 ? ' disabled' : ''}>
         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg></button></td>`;
     ftb.appendChild(tr);
@@ -1062,6 +1340,40 @@ function renderSettings() {
 
   renderPorts();
   $('penaltyRate').value = penaltyRate;
+  renderEUSettings();
+}
+
+// EU ETS / FuelEU parameter editors. Anchors render as a year-keyed grid.
+function renderEUSettings() {
+  $('etsEua').value = ets.euaPrice;
+  $('etsEurUsd').value = ets.eurUsd;
+  const pg = $('etsPhaseGrid');
+  pg.innerHTML = '';
+  Object.keys(ets.phaseIn).sort((a, b) => a - b).forEach(y => {
+    const w = document.createElement('div');
+    w.innerHTML = `<label class="block text-[11px] text-slate-400 mb-1">${y}年 (%)</label>
+      <input data-etsphase="${y}" type="number" step="1" value="${+(ets.phaseIn[y] * 100).toFixed(1)}" class="num-input rounded-lg px-3 py-2 w-full text-white text-sm tabular-nums focus:outline-none" />`;
+    pg.appendChild(w);
+  });
+  pg.querySelectorAll('input').forEach(el => el.addEventListener('input', (e) => {
+    ets.phaseIn[+e.target.dataset.etsphase] = (parseFloat(e.target.value) || 0) / 100;
+  }));
+
+  $('feuBaseline').value = fueleu.baseline;
+  $('feuPenalty').value = fueleu.penaltyEURperVLSFOt;
+  $('feuVlsfo').value = fueleu.vlsfoLHV;
+  $('feuEurUsd').value = fueleu.eurUsd;
+  const rg = $('feuReductionGrid');
+  rg.innerHTML = '';
+  Object.keys(fueleu.reduction).sort((a, b) => a - b).forEach(y => {
+    const w = document.createElement('div');
+    w.innerHTML = `<label class="block text-[11px] text-slate-400 mb-1">${y}年 (%)</label>
+      <input data-feured="${y}" type="number" step="0.1" value="${+(fueleu.reduction[y] * 100).toFixed(1)}" class="num-input rounded-lg px-3 py-2 w-full text-white text-sm tabular-nums focus:outline-none" />`;
+    rg.appendChild(w);
+  });
+  rg.querySelectorAll('input').forEach(el => el.addEventListener('input', (e) => {
+    fueleu.reduction[+e.target.dataset.feured] = (parseFloat(e.target.value) || 0) / 100;
+  }));
 }
 
 // 寄港地マスタをチップ表示（削除可・追加は入力欄から）
@@ -1095,11 +1407,22 @@ function getState() {
     fuels: structuredClone(fuels),
     targets: { ...targets },
     penaltyRate,
+    ets: structuredClone(ets),
+    fueleu: structuredClone(fueleu),
     ports: [...ports],
     legs: structuredClone(legs),
-    currentYear,
+    currentYear, activeRegime,
     sensFuelA, sensFuelB, sensEnergy,
   };
+}
+
+// Ensure legacy fuels/legs carry the newer fields (back-compat for older saves).
+function migrateData() {
+  fuels.forEach(f => {
+    if (f.co2tw == null) f.co2tw = +(((f.ci || 0) * (f.lhv || 0)) / 1e6).toFixed(3); // rough WtW->TtW proxy
+    if (f.ghg == null) f.ghg = f.ci || 0;
+  });
+  legs.forEach(l => { if (!l.euScope) l.euScope = 'in'; });
 }
 
 // Restore a snapshot and refresh the whole UI.
@@ -1108,11 +1431,14 @@ function applyState(s) {
   fuels       = structuredClone(s.fuels ?? DEFAULT_FUELS);
   targets     = { ...(s.targets ?? DEFAULT_TARGETS) };
   penaltyRate = s.penaltyRate ?? DEFAULT_PENALTY_RATE;
+  ets         = structuredClone(s.ets ?? DEFAULT_ETS);
+  fueleu      = structuredClone(s.fueleu ?? DEFAULT_FUELEU);
   ports       = [...(s.ports ?? DEFAULT_PORTS)];
   legs        = structuredClone(s.legs ?? DEFAULT_LEGS);
   currentYear = s.currentYear ?? 2030;
   sensFuelA   = s.sensFuelA ?? null;
   sensFuelB   = s.sensFuelB ?? null;
+  migrateData();
   $('yearSlider').value = currentYear;
   $('yearLabel').textContent = currentYear;
   populateSensFuelSelects();
@@ -1120,7 +1446,7 @@ function applyState(s) {
   $('sensEnergy').value = sensEnergy;
   renderLegTable();
   renderSettings();
-  update();
+  setRegime(s.activeRegime ?? activeRegime);
 }
 
 function loadStore() { try { return JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch { return {}; } }
@@ -1146,13 +1472,59 @@ function refreshScenarioList(selected) {
    MAIN UPDATE
 ============================================================ */
 function update(refreshTable = true) {
-  const r = calculate();
-  renderKPI(r);
-  if (ciChart) updateCiChart(r);
+  renderKPI();
+  if (ciChart) updateCiChart();
   if (bunkerChart) updateBunkerChart();
   if (sensChart) updateSensChart();
+  if (activeRegime === 'summary') renderSummary();
   saveAuto();   // keep the working state so the page restores on reopen
   if (refreshTable) { /* table refreshed separately to preserve focus */ }
+}
+
+// Switch active regulatory regime: relabel tabs, toggle the summary view, recompute.
+function setRegime(regime) {
+  activeRegime = regime;
+  document.querySelectorAll('.regime-tab').forEach(b => b.classList.toggle('active', b.dataset.regime === regime));
+  const isSummary = regime === 'summary';
+  $('summarySection').classList.toggle('hidden', !isSummary);
+  // Hide the single-regime KPI/route/charts blocks when on the summary tab.
+  ['kpiSection', 'energyStrip'].forEach(id => $(id) && $(id).classList.toggle('hidden', isSummary));
+  document.querySelectorAll('[data-regime-hide]').forEach(el => el.classList.toggle('hidden', isSummary));
+  update();
+}
+
+// Render the cross-regime comparison table + multi-year chart.
+function renderSummary() {
+  const g = calculate();                 // GFS
+  const e = calcETS(currentYear);        // EU ETS
+  const f = calcFuelEU(currentYear);     // FuelEU
+  $('sumYear').textContent = currentYear;
+
+  const rows = [
+    { name: 'IMO GFS', ok: g.compliant, okText: g.compliant ? '適合' : '未達',
+      reg: g.penalty, fuel: g.fuelCost, total: g.totalCost,
+      metric: `実績CI ${fmtNum(g.ciAvg, 1)} / 目標 ${fmtNum(g.target, 1)} g-CO₂e/MJ` },
+    { name: 'EU ETS', ok: true, okText: '炭素価格',
+      reg: e.etsCost, fuel: e.fuelCost, total: e.totalCost,
+      metric: `課金CO₂ ${fmtNum(e.surrenderedCO2, 0)} t × ${fmtNum(ets.euaPrice)}€ (×${fmtNum(e.phaseIn * 100, 0)}%)` },
+    { name: 'FuelEU Maritime', ok: f.compliant, okText: f.compliant ? '適合' : '未達',
+      reg: f.penaltyUSD, fuel: f.fuelCost, total: f.totalCost,
+      metric: `GHG ${fmtNum(f.actualGhg, 1)} / 目標 ${fmtNum(f.targetGhg, 1)} g-CO₂e/MJ` },
+  ];
+  const tb = $('summaryTableBody');
+  tb.innerHTML = rows.map(r => `
+    <tr class="border-b border-white/5">
+      <td class="py-2 pr-3 font-semibold text-white">${r.name}</td>
+      <td class="py-2 pr-3"><span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-bold ${r.ok ? 'bg-emerald-500/15 text-emerald-300' : 'bg-rose-500/15 text-rose-300'}">${r.okText}</span></td>
+      <td class="py-2 pr-3 text-right tabular-nums ${r.reg > 0 ? 'text-rose-300' : 'text-emerald-300'}">${fmtUSD(r.reg)}</td>
+      <td class="py-2 pr-3 text-right tabular-nums text-slate-300">${fmtUSD(r.fuel)}</td>
+      <td class="py-2 pr-3 text-right tabular-nums font-semibold text-white">${fmtUSD(r.total)}</td>
+      <td class="py-2 pr-3 text-xs text-slate-400">${r.metric}</td>
+    </tr>`).join('');
+
+  const totalReg = g.penalty + e.etsCost + f.penaltyUSD;
+  $('sumTotalReg').textContent = fmtUSD(totalReg);
+  updateSummaryChart();
 }
 
 /* ============================================================
@@ -1160,17 +1532,23 @@ function update(refreshTable = true) {
 ============================================================ */
 function init() {
   const savedAuto = loadAuto();   // read before any update() overwrites it
+  migrateData();
   renderLegTable();
   renderSettings();
   buildCiChart();
   buildBunkerChart();
+  buildSummaryChart();
   // sensitivity: default fuels + energy basis from the optimization scope
   populateSensFuelSelects();
   sensEnergy = scopeEnergyTotal() || voyageTotalEnergy();
   $('sensEnergy').value = sensEnergy;
   buildSensChart();
   refreshScenarioList();
-  if (savedAuto) applyState(savedAuto); else update();
+  // Regime tabs
+  document.querySelectorAll('.regime-tab').forEach(btn => {
+    btn.addEventListener('click', () => setRegime(btn.dataset.regime));
+  });
+  if (savedAuto) applyState(savedAuto); else setRegime('gfs');
 
   // Year slider
   $('yearSlider').addEventListener('input', (e) => {
@@ -1183,7 +1561,7 @@ function init() {
   $('addLeg').addEventListener('click', () => {
     if (legs.length >= MAX_LEGS) return;
     const last = legs[legs.length - 1];
-    legs.push({ from: last ? last.to : '', to: '', optimize: false, mass: 500, fuel: fuels[0].name });
+    legs.push({ from: last ? last.to : '', to: '', optimize: false, mass: 500, fuel: fuels[0].name, euScope: 'in' });
     renderLegTable();
     update();
   });
@@ -1265,7 +1643,8 @@ function init() {
     if (!confirm('現在の入力を破棄して初期サンプルに戻しますか？')) return;
     applyState({
       fuels: DEFAULT_FUELS, targets: DEFAULT_TARGETS, penaltyRate: DEFAULT_PENALTY_RATE,
-      ports: DEFAULT_PORTS, legs: DEFAULT_LEGS, currentYear: 2030,
+      ets: DEFAULT_ETS, fueleu: DEFAULT_FUELEU,
+      ports: DEFAULT_PORTS, legs: DEFAULT_LEGS, currentYear: 2030, activeRegime: 'gfs',
       sensFuelA: null, sensFuelB: null, sensEnergy: null,
     });
     $('scenarioName').value = '';
@@ -1298,6 +1677,14 @@ function init() {
 
   $('penaltyRate').addEventListener('input', (e) => { penaltyRate = parseFloat(e.target.value) || 0; });
 
+  // EU ETS / FuelEU scalar params
+  $('etsEua').addEventListener('input', (e) => { ets.euaPrice = parseFloat(e.target.value) || 0; });
+  $('etsEurUsd').addEventListener('input', (e) => { ets.eurUsd = parseFloat(e.target.value) || 0; });
+  $('feuBaseline').addEventListener('input', (e) => { fueleu.baseline = parseFloat(e.target.value) || 0; });
+  $('feuPenalty').addEventListener('input', (e) => { fueleu.penaltyEURperVLSFOt = parseFloat(e.target.value) || 0; });
+  $('feuVlsfo').addEventListener('input', (e) => { fueleu.vlsfoLHV = parseFloat(e.target.value) || 0; });
+  $('feuEurUsd').addEventListener('input', (e) => { fueleu.eurUsd = parseFloat(e.target.value) || 0; });
+
   $('applySettings').addEventListener('click', () => {
     // ensure legs still reference valid fuels
     legs.forEach(l => { if (!fuels.find(f => f.name === l.fuel)) l.fuel = fuels[0].name; });
@@ -1311,6 +1698,8 @@ function init() {
     fuels = structuredClone(DEFAULT_FUELS);
     targets = { ...DEFAULT_TARGETS };
     penaltyRate = DEFAULT_PENALTY_RATE;
+    ets = structuredClone(DEFAULT_ETS);
+    fueleu = structuredClone(DEFAULT_FUELEU);
     ports = [...DEFAULT_PORTS];
     renderSettings();
   });
