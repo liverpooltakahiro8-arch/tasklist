@@ -325,14 +325,12 @@
                   <tr class="text-left text-[11px] uppercase tracking-wider text-slate-400 border-b border-white/10">
                     <th class="py-2 pr-2" rowspan="2">燃料名</th>
                     <th class="py-2 pr-2" rowspan="2">LHV<br><span class="normal-case text-[9px]">MJ/t</span></th>
-                    <th class="py-1 px-2 text-center border-l border-white/10" colspan="2"><span class="text-sky-300">IMO規制</span></th>
+                    <th class="py-1 px-2 text-center border-l border-white/10" rowspan="2"><span class="text-sky-300">IMO</span><br><span class="normal-case text-[9px] text-slate-400">WtW CI · GFS g/MJ</span></th>
                     <th class="py-1 px-2 text-center border-l border-white/10" colspan="2"><span class="text-amber-300">EU規制</span></th>
                     <th class="py-2 pr-2 border-l border-white/10" rowspan="2">価格<br><span class="normal-case text-[9px]">USD/t</span></th>
                     <th class="py-2 w-8" rowspan="2"></th>
                   </tr>
                   <tr class="text-left text-[10px] uppercase tracking-wider text-slate-500 border-b border-white/10">
-                    <th class="py-1 pr-2 border-l border-white/10">WtW CI<br><span class="normal-case text-[9px]">GFS g/MJ</span></th>
-                    <th class="py-1 pr-2">TtW<br><span class="normal-case text-[9px]">g/MJ</span></th>
                     <th class="py-1 pr-2 border-l border-white/10">WtW GHG<br><span class="normal-case text-[9px]">FuelEU g/MJ</span></th>
                     <th class="py-1 pr-2">TtW CO₂<br><span class="normal-case text-[9px]">ETS g/MJ</span></th>
                   </tr>
@@ -406,25 +404,24 @@
 <script>
 /* ============================================================
    DEFAULT MASTER DATA
-   Fuel carbon-intensity matrix — regime (IMO / EU) × basis (TtW / WtW).
-   All four CI values are energy-based g-CO2(e)/MJ so they are directly
-   comparable and the right cell is picked per regulation:
+   Fuel carbon-intensity by regime. All values are energy-based g-CO2(e)/MJ
+   so the right one is picked per regulation:
      imoWtW : IMO GFS    — Well-to-Wake CO2e        → 規制計算: GFS
-     imoTtW : IMO        — Tank-to-Wake (参考値)
      euWtW  : FuelEU Mar.— Well-to-Wake CO2e        → 規制計算: FuelEU
      euTtW  : EU ETS     — Tank-to-Wake CO2 (燃焼分) → 規制計算: ETS
-   NOTE: 同じ燃料でも IMO と EU で CI 値が異なる場合がある。例えば第一世代の
+   NOTE: 同じ燃料でも IMO と EU で WtW CI が異なる場合がある。例えば第一世代の
    エタノールは IMO では値が議論中（暫定 38）だが、EU では化石燃料比較対象
    として HFO 同等（≈91.6）で計算される。各値は設定パネルで編集可能。
+   (IMO GFS は WtW 一本のため IMO 側に TtW 列は持たない。)
 ============================================================ */
 const DEFAULT_FUELS = [
-  //                          lhv     imoWtW  imoTtW  euWtW   euTtW   price
-  { name: 'HFO',              lhv: 40000, imoWtW: 89.0, imoTtW: 77.85, euWtW: 91.6, euTtW: 77.85, price: 550  },
-  { name: 'LNG',              lhv: 48000, imoWtW: 67.0, imoTtW: 57.29, euWtW: 76.0, euTtW: 57.29, price: 750  },
-  { name: 'グレーメタノール',  lhv: 19900, imoWtW: 96.0, imoTtW: 69.10, euWtW: 96.0, euTtW: 69.10, price: 420  },
-  { name: 'グリーンメタノール', lhv: 19900, imoWtW: 18.0, imoTtW: 0.00,  euWtW: 18.0, euTtW: 0.00,  price: 1250 },
-  { name: 'エタノール',        lhv: 26800, imoWtW: 38.0, imoTtW: 0.00,  euWtW: 91.6, euTtW: 0.00,  price: 950  },
-  { name: 'e-アンモニア',      lhv: 18000, imoWtW: 0.0,  imoTtW: 0.00,  euWtW: 0.0,  euTtW: 0.00,  price: 1300 },
+  //                          lhv     imoWtW  euWtW   euTtW   price
+  { name: 'HFO',              lhv: 40000, imoWtW: 89.0, euWtW: 91.6, euTtW: 77.85, price: 550  },
+  { name: 'LNG',              lhv: 48000, imoWtW: 67.0, euWtW: 76.0, euTtW: 57.29, price: 750  },
+  { name: 'グレーメタノール',  lhv: 19900, imoWtW: 96.0, euWtW: 96.0, euTtW: 69.10, price: 420  },
+  { name: 'グリーンメタノール', lhv: 19900, imoWtW: 18.0, euWtW: 18.0, euTtW: 0.00,  price: 1250 },
+  { name: 'エタノール',        lhv: 26800, imoWtW: 38.0, euWtW: 91.6, euTtW: 0.00,  price: 950  },
+  { name: 'e-アンモニア',      lhv: 18000, imoWtW: 0.0,  euWtW: 0.0,  euTtW: 0.00,  price: 1300 },
 ];
 
 const DEFAULT_TARGETS = { 2026: 85.0, 2030: 75.0, 2035: 55.0, 2040: 30.0, 2050: 0.0 };
@@ -1312,7 +1309,6 @@ function renderSettings() {
       <td class="py-2 pr-2"><input data-i="${i}" data-k="name" type="text" value="${f.name}" class="num-input rounded-md px-2 py-1.5 w-full text-white text-sm focus:outline-none" /></td>
       <td class="py-2 pr-2"><input data-i="${i}" data-k="lhv" type="number" step="100" value="${f.lhv}" class="num-input rounded-md px-2 py-1.5 w-20 text-white text-sm tabular-nums focus:outline-none" /></td>
       <td class="py-2 pr-2 border-l border-white/5"><input data-i="${i}" data-k="imoWtW" type="number" step="0.1" value="${ciIMO(f)}" class="num-input rounded-md px-2 py-1.5 w-16 text-white text-sm tabular-nums focus:outline-none" /></td>
-      <td class="py-2 pr-2"><input data-i="${i}" data-k="imoTtW" type="number" step="0.1" value="${f.imoTtW ?? ttwEU(f).toFixed(2)}" class="num-input rounded-md px-2 py-1.5 w-16 text-white text-sm tabular-nums focus:outline-none" /></td>
       <td class="py-2 pr-2 border-l border-white/5"><input data-i="${i}" data-k="euWtW" type="number" step="0.1" value="${ghgEU(f)}" class="num-input rounded-md px-2 py-1.5 w-16 text-white text-sm tabular-nums focus:outline-none" /></td>
       <td class="py-2 pr-2"><input data-i="${i}" data-k="euTtW" type="number" step="0.1" value="${(+ttwEU(f)).toFixed(2)}" class="num-input rounded-md px-2 py-1.5 w-16 text-white text-sm tabular-nums focus:outline-none" /></td>
       <td class="py-2 pr-2 border-l border-white/5"><input data-i="${i}" data-k="price" type="number" step="10" value="${f.price}" class="num-input rounded-md px-2 py-1.5 w-20 text-white text-sm tabular-nums focus:outline-none" /></td>
@@ -1429,14 +1425,13 @@ function getState() {
 // Ensure legacy fuels/legs carry the newer fields (back-compat for older saves).
 function migrateData() {
   fuels.forEach(f => {
-    // Legacy {ci, ghg, co2tw} → regime×basis matrix {imoWtW, imoTtW, euWtW, euTtW}.
+    // Legacy {ci, ghg, co2tw} → per-regime CI {imoWtW, euWtW, euTtW}.
     if (f.imoWtW == null) f.imoWtW = f.ci ?? 0;                       // IMO WtW (GFS)
     if (f.euWtW  == null) f.euWtW  = (f.ghg != null ? f.ghg : (f.ci ?? 0));  // EU WtW (FuelEU)
     if (f.euTtW  == null) f.euTtW  = (f.co2tw != null && f.lhv)       // EU TtW CO2 (ETS), t/t → g/MJ
       ? +(((f.co2tw * 1e6) / f.lhv)).toFixed(2) : 0;
-    if (f.imoTtW == null) f.imoTtW = f.euTtW;                          // IMO TtW (参考; 既定は燃焼CO2同値)
-    // Drop superseded legacy keys so they don't shadow edits.
-    delete f.ci; delete f.ghg; delete f.co2tw;
+    // Drop superseded legacy / unused keys so they don't shadow edits.
+    delete f.ci; delete f.ghg; delete f.co2tw; delete f.imoTtW;
   });
   legs.forEach(l => { if (!l.euScope) l.euScope = 'in'; });
 }
@@ -1676,7 +1671,7 @@ function init() {
   $('settingsBackdrop').addEventListener('click', closeModal);
 
   $('addFuel').addEventListener('click', () => {
-    fuels.push({ name: '新燃料' + (fuels.length + 1), lhv: 40000, imoWtW: 50, imoTtW: 50, euWtW: 50, euTtW: 50, price: 800 });
+    fuels.push({ name: '新燃料' + (fuels.length + 1), lhv: 40000, imoWtW: 50, euWtW: 50, euTtW: 50, price: 800 });
     renderSettings();
   });
 
