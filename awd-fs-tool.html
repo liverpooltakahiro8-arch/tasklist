@@ -130,6 +130,29 @@
   .method-table td{text-align:left;padding:6px 8px;border-bottom:1px solid #eef2f6}
   .method-table td:first-child{font-weight:700;color:#334e68;white-space:nowrap}
   textarea.paste{width:100%;min-height:90px;border:1px solid #cbd2d9;border-radius:5px;padding:8px;font-family:monospace;font-size:12px;background:#fafbfc}
+
+  /* ---- guide / 解説タブ ---- */
+  #panel-guide h2{margin-top:26px}
+  #panel-guide h2:first-of-type{margin-top:8px}
+  .g-text{font-size:13.5px;color:#334e68;margin-bottom:10px}
+  .g-text b{color:#1a3c5e}
+  .g-table{font-size:12.5px}
+  .g-table td{text-align:left;padding:7px 9px;border-bottom:1px solid #eef2f6;vertical-align:top}
+  .g-table td:first-child{font-weight:700;color:#334e68;white-space:nowrap}
+  .g-table thead th{text-align:left}
+  .flow{display:flex;align-items:stretch;gap:8px;flex-wrap:wrap;margin:6px 0 4px}
+  .flow-step{flex:1;min-width:200px;background:#f7fafc;border:1px solid #e4e9ef;border-radius:8px;padding:12px 14px;font-size:13px}
+  .flow-step b{color:#1a3c5e}
+  .flow-num{display:inline-flex;width:22px;height:22px;border-radius:50%;background:#2b6cb0;color:#fff;align-items:center;justify-content:center;font-size:12px;font-weight:700;margin-right:6px}
+  .flow-arrow{display:flex;align-items:center;color:#9aa5b1;font-size:20px;font-weight:700}
+  @media(max-width:760px){.flow-arrow{transform:rotate(90deg);justify-content:center}}
+  .calc-flow{background:#f0f6fc;border:1px solid #cfe2f5;border-radius:8px;padding:14px 16px;font-size:13px;color:#1a3c5e;line-height:2}
+  .calc-flow b{background:#fff;border:1px solid #b6d0ec;border-radius:4px;padding:2px 7px}
+  .calc-flow .seq{color:#627d98;font-size:12px;margin:0 2px}
+  .g-src{font-size:12px;color:#52606d;margin-top:14px}
+  .g-src ul{margin:6px 0 0 18px}
+  .g-src li{margin:3px 0}
+  .g-src a{color:#2b6cb0}
 </style>
 </head>
 <body>
@@ -217,6 +240,7 @@
     <div class="tab active" data-tab="baseline" onclick="switchTab('baseline')"><span class="num">1</span>ベースライン想定</div>
     <div class="tab" data-tab="reduction" onclick="switchTab('reduction')"><span class="num">2</span>削減量想定（手弁当）</div>
     <div class="tab" data-tab="field" onclick="switchTab('field')"><span class="num">3</span>現地FSデータ入力</div>
+    <div class="tab" data-tab="guide" onclick="switchTab('guide')">📖 解説・用語</div>
   </div>
 
   <div class="tab-body">
@@ -420,23 +444,151 @@
       </div>
     </div>
 
-  </div>
+    <!-- ---------- 📖 解説・用語 ---------- -->
+    <div class="tab-panel" id="panel-guide">
 
-  <!-- ============ 計算方法 ============ -->
-  <div class="card">
-    <details>
-      <summary>計算方法・係数の説明</summary>
+      <div class="info">
+        このページは、ツールの背景にある考え方・専門用語・計算式をまとめた<b>解説ページ</b>です。元のExcel（入力ガイド／係数説明）の内容に加え、AWDの仕組みを平易に補足しています。
+      </div>
+
+      <!-- 0. このツールの全体像 -->
+      <h2>このツールでできること（3機能の関係）</h2>
+      <p class="g-text">AWDプロジェクトのFS（実現可能性調査）では、「どれだけ温室効果ガスを減らせそうか」を段階的に詰めていきます。本ツールの3機能はその流れに対応しています。</p>
+      <div class="flow">
+        <div class="flow-step"><span class="flow-num">1</span><b>ベースライン想定</b><br><span class="muted">プロジェクトをやらない場合（慣行＝湛水）の基準排出量。これが「比較の土台」になります。</span></div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step"><span class="flow-num">2</span><b>削減量想定（手弁当）</b><br><span class="muted">AWD水管理の計画を当てはめ、ベースラインからどれだけ減るかを<b>事前にざっくり</b>見積もります。</span></div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step"><span class="flow-num">3</span><b>現地FSデータ入力</b><br><span class="muted">実際に測った日々の気温・水位を入れ、<b>実績</b>に基づく排出量・削減量を確認します。</span></div>
+      </div>
+
+      <!-- 1. AWDとは -->
+      <h2>AWD（間断灌漑）とは</h2>
+      <p class="g-text">
+        <b>AWD（Alternate Wetting and Drying＝間断灌漑）</b>は、水田を常に水で満たし続けるのではなく、
+        <b>「水を張った状態」と「水を抜いて干した状態」を数日おきに繰り返す</b>水管理方法です。
+        日本の慣行農法でいう<b>「中干し」</b>を計画的に行い、その期間を延長する取り組みも同じ考え方に含まれます。
+        水使用量の削減に加え、温室効果ガスであるメタンの排出を抑える効果があります。
+      </p>
+
+      <h3>なぜメタンが減るのか</h3>
+      <p class="g-text">
+        水田に水を張り続けると、土の中が酸素のない状態（嫌気的）になり、そこで働く微生物（メタン生成菌）が
+        大量の<b>メタン（CH₄）</b>を発生させます。メタンはCO₂の数十倍の温室効果を持つガスです。<br>
+        水を抜いて土を干す（落水）と土中に酸素が入り、メタンの発生が抑えられます。
+        この「干す」期間を設けることで、年間のメタン排出量を<b>おおむね2〜3割削減</b>できると報告されています
+        （中干し7日間で約2〜3割減、収量への影響は0〜4%程度）。
+      </p>
+
+      <!-- 2. クレジットの基本概念 -->
+      <h2>ベースライン・削減量・クレジットの考え方</h2>
       <table class="method-table">
-        <tr><td>日内温度補間</td><td>日最低気温は早朝5時、日最高気温は14時に出ると仮定し、サイン波で24時刻の温度 T(h)=平均+振幅×sin(2π(h−8)/24) を補間。</td></tr>
-        <tr><td>f_T（日内温度補正係数）</td><td>24時刻の Q10^((T−25)/10) の平均値。温度が高いほど大きくなります。</td></tr>
-        <tr><td>日排出量</td><td>EFc × SFw × SFo × SFs × f_T（kgCH₄/ha/日）</td></tr>
-        <tr><td>SFw（水管理係数）</td><td>湛水=1.0 / AWD排水=SFw_AWD（初期0.52）。現地データでは水位0cm以下が連続3日以上でAWD排水と自動判定。</td></tr>
-        <tr><td>EFc</td><td>基準メタン排出係数。地域・圃場で変わる。日本_温暖=1.3 / 東南アジア_高温=1.5 / 冷涼=1.0。</td></tr>
-        <tr><td>tCO₂e換算</td><td>kgCH₄ × GWP ÷ 1000。GWPはAR5/AR6等を選択。</td></tr>
-        <tr><td>積算削減</td><td>1作期の削減量 × プロジェクト期間（年）。年1作を想定した概算。</td></tr>
+        <tr><td>ベースライン</td><td>プロジェクトを<b>実施しなかった場合</b>に出ていたであろう排出量。慣行（湛水）が基準。「これだけ出るはずだった」という比較の土台。</td></tr>
+        <tr><td>プロジェクト排出量</td><td>AWD/中干しを<b>実施した場合</b>の排出量。ベースラインより小さくなります。</td></tr>
+        <tr><td>削減量</td><td><b>ベースライン − プロジェクト排出量</b>。この差が「減らせた量」。tCO₂e（CO₂換算トン）で表します。</td></tr>
+        <tr><td>カーボンクレジット</td><td>削減量を第三者（国など）が認証し、売買できる単位にしたもの。日本では2023年に「水稲栽培における中干し期間の延長」がJ-クレジットの方法論として承認されました。本ツールはその<b>事前検討（FS）用の概算</b>です。</td></tr>
       </table>
-      <p class="muted" style="margin-top:8px">※本ツールは事前FS・概算用途です。正式な方法論（J-クレジット等）の適用時は各方法論の規定値・要件に従ってください。</p>
-    </details>
+
+      <!-- 3. 計算の流れ -->
+      <h2>計算の流れ</h2>
+      <div class="calc-flow">
+        日最低・最高気温
+        <span class="seq">→ サイン波で24時刻に補間 →</span>
+        各時刻の温度 T
+        <span class="seq">→ Q10^((T−25)/10) の平均 →</span>
+        <b>f_T（温度補正）</b>
+        <span class="seq">→ ×EFc ×SFw ×SFo ×SFs →</span>
+        <b>日排出量(kgCH₄/ha)</b>
+        <span class="seq">→ ×面積 ×日数 →</span>
+        kgCH₄
+        <span class="seq">→ ×GWP÷1000 →</span>
+        <b>tCO₂e</b>
+      </div>
+
+      <!-- 4. 入力項目の説明（Excel 入力ガイド由来） -->
+      <h2>入力項目の説明</h2>
+      <div class="tbl-wrap">
+        <table class="g-table">
+          <thead><tr><th>項目</th><th>入力タイミング</th><th>例</th><th>説明</th></tr></thead>
+          <tbody>
+            <tr><td>日最低気温(℃)</td><td>毎日</td><td>22</td><td>その日の最低気温。これと日最高気温から24時刻の温度を自動補間します。</td></tr>
+            <tr><td>日最高気温(℃)</td><td>毎日</td><td>33</td><td>その日の最高気温。</td></tr>
+            <tr><td>水位(cm)</td><td>毎日</td><td>5（湛水）, 0, −3（排水）</td><td>0以下で排水日数をカウントし、連続3日以上で「AWD排水」と判定します。</td></tr>
+            <tr><td>EFc</td><td>圃場・地域ごと</td><td>1.3</td><td>基準メタン排出係数（kgCH₄/ha/day）。地域別代表値を参照。</td></tr>
+            <tr><td>SFw</td><td>通常入力不要</td><td>自動</td><td>水位と排水日数から自動判定（湛水=1.0、AWD排水=0.52 が初期設定）。</td></tr>
+            <tr><td>SFo</td><td>有機資材条件が変わる時</td><td>1.0</td><td>有機物係数。通常1.0。</td></tr>
+            <tr><td>SFs</td><td>特殊条件時のみ</td><td>1.0</td><td>土壌係数。通常1.0。</td></tr>
+            <tr><td>Q10</td><td>通常固定</td><td>2.0</td><td>温度感度係数。10℃上昇したときに排出が何倍になるか。</td></tr>
+            <tr><td>面積(ha)</td><td>圃場ごと</td><td>1.25</td><td>kgCH₄/日・tCO₂e/日への換算に使用。</td></tr>
+            <tr><td>T00〜T23</td><td>入力不要</td><td>自動</td><td>日最低・最高からサイン波で24時刻の温度を自動計算。</td></tr>
+            <tr><td>f_T（日内温度補正係数）</td><td>入力不要</td><td>自動</td><td>24時刻の Q10^((T−25)/10) の平均。</td></tr>
+            <tr><td>日排出量</td><td>入力不要</td><td>自動</td><td>EFc × SFw × SFo × SFs × f_T（kgCH₄/ha/day）。</td></tr>
+            <tr><td>kgCH₄/日</td><td>入力不要</td><td>自動</td><td>日排出量 × 面積。</td></tr>
+            <tr><td>tCO₂e/日</td><td>入力不要</td><td>自動</td><td>kgCH₄/日 × GWP ÷ 1000。</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="muted" style="margin-top:6px">※温度補間の考え方：最低気温は早朝5時頃、最高気温は14時頃に出ると仮定し、24時刻をなめらかに補間します。厳密な実測の時刻別気温がある場合は、観測値を用いる方が精度は高くなります。</p>
+
+      <!-- 5. 係数の説明（Excel 係数説明由来） -->
+      <h2>係数の説明</h2>
+      <div class="tbl-wrap">
+        <table class="g-table">
+          <thead><tr><th>係数</th><th>意味</th><th>いつ変更するか</th><th>目安値 / 例</th></tr></thead>
+          <tbody>
+            <tr><td>EFc</td><td>基準メタン排出係数（kgCH₄/ha/day）</td><td>地域・圃場条件が変わる時</td><td>日本_温暖:1.3 / 東南アジア_高温:1.5 / 冷涼:1.0</td></tr>
+            <tr><td>SFw</td><td>水管理係数</td><td>通常は自動。手動変更は方法論の規定値を採用する時</td><td>湛水=1.0 / AWD排水=0.52</td></tr>
+            <tr><td>SFo</td><td>有機物係数（わら還元・堆肥など）</td><td>有機資材の投入条件が変わる時</td><td>通常1.0、条件により1.2〜2.0</td></tr>
+            <tr><td>SFs</td><td>土壌係数</td><td>特別な補正が必要な時</td><td>通常1.0</td></tr>
+            <tr><td>Q10</td><td>温度感度係数（10℃上昇時の倍率）</td><td>感度分析やモデル設定変更時</td><td>通常2.0</td></tr>
+            <tr><td>f_T</td><td>日内温度補正係数</td><td>自動計算（入力不要）</td><td>気温から自動</td></tr>
+            <tr><td>GWP</td><td>地球温暖化係数（CH₄をCO₂換算する倍率）</td><td>準拠する報告基準に合わせる</td><td>AR5:28 / AR6:27 / AR4:25</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- 6. 地域別代表値 -->
+      <h2>地域別の代表値（参考）</h2>
+      <div class="tbl-wrap">
+        <table class="g-table">
+          <thead><tr><th>地域</th><th>EFc 代表値</th><th>SFw_AWD 代表値</th><th>備考</th></tr></thead>
+          <tbody>
+            <tr><td>日本_温暖</td><td>1.3</td><td>0.52</td><td>初期設定の例</td></tr>
+            <tr><td>東南アジア_高温</td><td>1.5</td><td>0.45</td><td>高温条件の例</td></tr>
+            <tr><td>冷涼地域</td><td>1.0</td><td>0.60</td><td>低温条件の例</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- 7. 計算式まとめ -->
+      <h2>計算式まとめ</h2>
+      <table class="method-table">
+        <tr><td>時刻別気温</td><td>T(h) = (最低+最高)/2 + (最高−最低)/2 × sin(2π(h−8)/24)　（h=0〜23時、各時刻を小数2桁に丸め）</td></tr>
+        <tr><td>f_T（温度補正）</td><td>24時刻の Q10^((T−25)/10) の平均値</td></tr>
+        <tr><td>日排出量</td><td>EFc × SFw × SFo × SFs × f_T　（kgCH₄/ha/日）</td></tr>
+        <tr><td>SFw（水管理）</td><td>湛水 = 1.0 ／ AWD排水 = SFw_AWD（初期0.52）。現地データでは水位0cm以下が連続3日以上でAWD排水と自動判定</td></tr>
+        <tr><td>日CH₄量</td><td>日排出量 × 面積（ha）　（kgCH₄/日）</td></tr>
+        <tr><td>tCO₂e換算</td><td>kgCH₄ × GWP ÷ 1000</td></tr>
+        <tr><td>削減量</td><td>ベースライン排出量 − プロジェクト（AWD）排出量</td></tr>
+        <tr><td>プロジェクト積算削減</td><td>1作期の削減量 × プロジェクト期間（年）　※年1作を想定した概算</td></tr>
+      </table>
+
+      <!-- 8. 注意・出典 -->
+      <div class="note" style="margin-top:16px">
+        <b>ご注意：</b>本ツールは事前FS・概算を目的とした簡易モデルです。実際のクレジット申請・認証では、J-クレジット制度「水稲栽培における中干し期間の延長」などの<b>各方法論が定める規定値・測定要件・モニタリング方法</b>に従う必要があります。本ツールの数値はそのまま公式な削減量とはなりません。
+      </div>
+      <div class="g-src">
+        <b>参考情報の出典：</b>
+        <ul>
+          <li><a href="https://www.maff.go.jp/j/press/kanbo/b_kankyo/230301.html" target="_blank" rel="noopener">農林水産省：「水稲栽培における中干し期間の延長」がJ-クレジット制度の方法論として承認</a></li>
+          <li><a href="https://www.maff.go.jp/j/seisan/kankyo/ondanka/attach/pdf/nakaboshi-1.pdf" target="_blank" rel="noopener">農林水産省：「水稲栽培における中干し期間の延長」のJ-クレジット制度について（PDF）</a></li>
+          <li><a href="https://www.pref.tochigi.lg.jp/g59/documents/nakaboshiencyoumetan.pdf" target="_blank" rel="noopener">栃木県農業総合研究センター：水田から発生するメタン抑制技術（中干し延長）（PDF）</a></li>
+          <li><a href="https://www.bluedotgreen.co.jp/column/credit/mid-season-drainage-credit/" target="_blank" rel="noopener">中干しクレジットとは？（解説記事）</a></li>
+        </ul>
+      </div>
+
+    </div>
+
   </div>
 
   <p class="muted" style="text-align:center;padding-bottom:10px">
@@ -653,10 +805,9 @@ function calcBaseline(){
   });
   document.getElementById('bl-tfoot').innerHTML=`<tr><td>合計</td><td>${totDays}</td><td>—</td><td>—</td><td>—</td><td>${totCH4.toFixed(1)}</td><td>${totCO2e.toFixed(4)}</td></tr>`;
 
+  document.getElementById('baseline-results').style.display='block';
   drawBars(document.getElementById('bl-chart'), rows.map(r=>r.name),
     [{label:'ベースライン tCO₂e', color:'#2b6cb0', data:rows.map(r=>r.co2e)}]);
-
-  document.getElementById('baseline-results').style.display='block';
 }
 
 // =====================================================================
@@ -704,11 +855,10 @@ function calcReduction(){
   document.getElementById('rd-tfoot').innerHTML=`<tr><td>合計</td><td>${totDays}</td><td>—</td><td>—</td>
     <td>${totBase.toFixed(4)}</td><td>${totAwd.toFixed(4)}</td><td class="td-diff">${reduc>0?'+':''}${reduc.toFixed(4)}</td><td class="td-diff">${rate.toFixed(1)}%</td></tr>`;
 
+  document.getElementById('reduction-results').style.display='block';
   drawBars(document.getElementById('rd-chart'), rows.map(r=>r.name),
     [{label:'ベースライン', color:'#2b6cb0', data:rows.map(r=>r.base)},
      {label:'AWD', color:'#177245', data:rows.map(r=>r.awd)}]);
-
-  document.getElementById('reduction-results').style.display='block';
 }
 
 // =====================================================================
@@ -838,11 +988,10 @@ function calcField(){
     <td style="text-align:center">${awdDays}日AWD</td><td>—</td><td>—</td>
     <td>${totBase.toFixed(4)}</td><td>${totAct.toFixed(4)}</td><td class="td-diff">${reduc>0?'+':''}${reduc.toFixed(4)}</td></tr>`;
 
+  document.getElementById('field-results').style.display='block';
   drawLines(document.getElementById('fd-chart'), rows.map(r=>r.date),
     [{label:'累積ベースライン', color:'#2b6cb0', data:rows.map(r=>r.cumBase)},
      {label:'累積 実測', color:'#177245', data:rows.map(r=>r.cumAct)}]);
-
-  document.getElementById('field-results').style.display='block';
 }
 
 function exportFieldCSV(){
@@ -872,18 +1021,22 @@ function niceCeil(v){
   return nf*Math.pow(10,exp);
 }
 function fmtNum(v){
+  if(v===0) return '0';
   const a=Math.abs(v);
-  if(a>=100) return v.toFixed(0);
+  if(a>=1000) return v.toFixed(0);
+  if(a>=10) return v.toFixed(1);
   if(a>=1) return v.toFixed(2);
-  if(a>=0.01) return v.toFixed(3);
-  return v.toExponential(1);
+  if(a>=0.1) return v.toFixed(2);
+  if(a>=0.001) return v.toFixed(3);
+  return v.toPrecision(2);   // 指数表記を避ける
 }
 function shortLabel(s,n){ s=String(s); return s.length>n? s.slice(0,n-1)+'…' : s; }
 
 function drawBars(canvas,groups,series){
-  const {ctx,w,h}=setupCanvas(canvas,300);
+  const {ctx,w,h}=setupCanvas(canvas,310);
   ctx.clearRect(0,0,w,h);
-  const padL=58,padR=14,padT=14,padB=70, plotW=w-padL-padR, plotH=h-padT-padB;
+  drawLegend(ctx,w,series);
+  const padL=58,padR=16,padT=38,padB=74, plotW=w-padL-padR, plotH=h-padT-padB;
   let maxV=0; series.forEach(s=>s.data.forEach(v=>{ if(v>maxV)maxV=v; }));
   const top=niceCeil(maxV||1), ticks=5;
   ctx.font='11px sans-serif'; ctx.textBaseline='middle';
@@ -909,13 +1062,13 @@ function drawBars(canvas,groups,series){
     ctx.fillStyle='#52606d'; ctx.font='11px sans-serif'; ctx.textAlign='right'; ctx.textBaseline='middle';
     ctx.fillText(shortLabel(g,10),0,0); ctx.restore();
   });
-  drawLegend(ctx,w,padT,series);
 }
 
 function drawLines(canvas,labels,series){
-  const {ctx,w,h}=setupCanvas(canvas,300);
+  const {ctx,w,h}=setupCanvas(canvas,310);
   ctx.clearRect(0,0,w,h);
-  const padL=58,padR=14,padT=14,padB=58, plotW=w-padL-padR, plotH=h-padT-padB;
+  drawLegend(ctx,w,series);
+  const padL=58,padR=16,padT=38,padB=58, plotW=w-padL-padR, plotH=h-padT-padB;
   let maxV=0; series.forEach(s=>s.data.forEach(v=>{ if(v>maxV)maxV=v; }));
   const top=niceCeil(maxV||1), ticks=5;
   ctx.font='11px sans-serif'; ctx.textBaseline='middle';
@@ -938,16 +1091,14 @@ function drawLines(canvas,labels,series){
     const pr=n>40?0:2.5;
     if(pr) s.data.forEach((v,i)=>{ const x=xAt(i),y=padT+plotH-(v/top)*plotH; ctx.beginPath(); ctx.arc(x,y,pr,0,2*Math.PI); ctx.fill(); });
   });
-  drawLegend(ctx,w,padT,series);
 }
 
-function drawLegend(ctx,w,padT,series){
+// 凡例はプロット領域の上部（y=16付近）に右詰めで描画し、棒・線と重ならないようにする
+function drawLegend(ctx,w,series){
   ctx.font='11px sans-serif'; ctx.textBaseline='middle'; ctx.textAlign='left';
-  let lx=w-14, items=series.map(s=>s.label);
-  // 右上に右詰めで配置
-  const widths=items.map(t=>ctx.measureText(t).width+22);
-  let total=widths.reduce((a,b)=>a+b,0);
-  let x=w-14-total, y=padT+4;
+  const widths=series.map(s=>ctx.measureText(s.label).width+24);
+  const total=widths.reduce((a,b)=>a+b,0);
+  let x=Math.max(58, w-16-total), y=16;
   series.forEach((s,i)=>{
     ctx.fillStyle=s.color; ctx.fillRect(x,y-5,12,10);
     ctx.fillStyle='#52606d'; ctx.fillText(s.label,x+16,y);
