@@ -180,6 +180,25 @@
   .acc-side{display:flex;flex-direction:column;gap:10px}
   .acc-formula{background:#f0f6fc;border:1px solid #cfe2f5;border-radius:6px;padding:12px 14px;font-family:monospace;font-size:12.5px;color:#1a3c5e;line-height:1.8;white-space:pre-wrap}
   .acc-note{background:#fffbe6;border:1px solid #ffe28a;border-radius:6px;padding:10px 12px;font-size:12px;color:#5a4a00;line-height:1.6}
+
+  /* ---- scenario manager ---- */
+  .scen-savebar{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap}
+  .scen-empty{color:#9aa5b1;font-size:13px;padding:14px;text-align:center;background:#f7fafc;border:1px dashed #cbd2d9;border-radius:8px}
+  .scen-row{display:flex;align-items:center;gap:12px;padding:11px 14px;border:1px solid #dde5ef;border-radius:8px;margin-bottom:8px;flex-wrap:wrap;background:#fafcfe;transition:.15s}
+  .scen-row:hover{box-shadow:0 2px 8px rgba(43,108,176,.1);border-color:#b6d0ec}
+  .scen-row.active{border-color:#2b6cb0;background:#eef4fb;box-shadow:0 0 0 1px #2b6cb0 inset}
+  .scen-info{flex:1;min-width:200px}
+  .scen-name{font-size:14px;font-weight:700;color:#1a3c5e}
+  .scen-active-badge{font-size:10px;font-weight:700;background:#2b6cb0;color:#fff;border-radius:4px;padding:1px 7px;margin-left:8px;vertical-align:middle}
+  .scen-meta{font-size:11.5px;color:#829ab1;margin-top:2px}
+  .scen-meta b{color:#52606d;font-weight:600}
+  .scen-actions{display:flex;gap:6px;flex-wrap:wrap}
+  .scen-actions button{border:1px solid #cbd2d9;background:#fff;border-radius:5px;padding:5px 11px;font-size:12px;font-weight:600;cursor:pointer;color:#486581}
+  .scen-actions button:hover{background:#eef4fb;border-color:#b6d0ec;color:#1a5fa8}
+  .scen-actions button.load{background:#2b6cb0;color:#fff;border-color:#2b6cb0}
+  .scen-actions button.load:hover{background:#225a96;color:#fff}
+  .scen-actions button.del{color:#b71c1c;border-color:#f0bcbc}
+  .scen-actions button.del:hover{background:#fbe6e6;color:#b71c1c}
 </style>
 </head>
 <body>
@@ -198,6 +217,26 @@
 </div>
 
 <div class="container">
+
+  <!-- ============ シナリオ管理 ============ -->
+  <div class="card">
+    <h2>保存済みシナリオ（この端末内に保存）</h2>
+    <p class="muted" style="margin-bottom:12px">
+      プロジェクト・季節（乾季／雨季など）ごとに入力内容を名前を付けて保存できます。JSONファイルを書き出さなくても、この端末のブラウザ内に複数の状態を保持し、ワンクリックで切り替えられます。
+    </p>
+    <div class="scen-savebar">
+      <div class="form-group" style="flex:2">
+        <label>シナリオ名</label>
+        <input id="scenName" placeholder="例：A圃場 / 乾季プラン">
+      </div>
+      <div class="form-group" style="flex:2">
+        <label>メモ・季節など（任意）</label>
+        <input id="scenNote" placeholder="例：乾季・中干し延長14日">
+      </div>
+      <button class="btn btn-primary btn-sm" style="height:34px" onclick="saveNewScenario()">💾 現在の状態を保存</button>
+    </div>
+    <div id="scen-list" style="margin-top:14px"></div>
+  </div>
 
   <!-- ============ 共通パラメータ ============ -->
   <div class="card">
@@ -886,6 +925,105 @@ function applyStateToInputs(){
 function setVal(id,v){ const e=document.getElementById(id); if(e!=null&&v!=null) e.value=v; }
 
 // =====================================================================
+//  Scenario manager — 複数の状態を端末内(localStorage)に名前付き保存
+// =====================================================================
+const SCEN_KEY='awd_fs_scenarios_v1';
+let activeScenId=null;   // 現在読み込み中のシナリオID（上書き保存の対象）
+
+function loadScenarios(){
+  try{ return JSON.parse(localStorage.getItem(SCEN_KEY)||'[]'); }catch(e){ return []; }
+}
+function saveScenarios(arr){
+  try{ localStorage.setItem(SCEN_KEY, JSON.stringify(arr)); }catch(e){ alert('保存に失敗しました（ブラウザの保存容量制限の可能性）'); }
+}
+function snapshot(){
+  readParams();
+  return JSON.parse(JSON.stringify({ projName:state.projName, params:state.params, periods:state.periods, field:state.field }));
+}
+function nowStr(){
+  const d=new Date(), p=n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+function saveNewScenario(){
+  const name=(document.getElementById('scenName').value||'').trim();
+  const note=(document.getElementById('scenNote').value||'').trim();
+  if(!name){ alert('シナリオ名を入力してください'); document.getElementById('scenName').focus(); return; }
+  const arr=loadScenarios();
+  const id='s'+Date.now();
+  arr.push({ id, name, note, savedAt:nowStr(), data:snapshot() });
+  saveScenarios(arr);
+  activeScenId=id;
+  document.getElementById('scenName').value=''; document.getElementById('scenNote').value='';
+  renderScenarios();
+  flashSaved();
+}
+function overwriteScenario(id){
+  const arr=loadScenarios(); const s=arr.find(x=>x.id===id); if(!s) return;
+  if(!confirm(`「${s.name}」を現在の入力内容で上書き保存します。よろしいですか？`)) return;
+  s.data=snapshot(); s.savedAt=nowStr();
+  saveScenarios(arr); activeScenId=id; renderScenarios(); flashSaved();
+}
+function loadScenario(id){
+  const arr=loadScenarios(); const s=arr.find(x=>x.id===id); if(!s) return;
+  state=Object.assign(defaultState(), JSON.parse(JSON.stringify(s.data)));
+  applyStateToInputs();
+  ['baseline-results','reduction-results','field-results'].forEach(i=>{const el=document.getElementById(i); if(el)el.style.display='none';});
+  activeScenId=id;
+  saveState(); renderScenarios();
+  document.querySelector('.container').scrollIntoView({behavior:'smooth'});
+}
+function duplicateScenario(id){
+  const arr=loadScenarios(); const s=arr.find(x=>x.id===id); if(!s) return;
+  const copy=JSON.parse(JSON.stringify(s));
+  copy.id='s'+Date.now(); copy.name=s.name+'（複製）'; copy.savedAt=nowStr();
+  arr.push(copy); saveScenarios(arr); renderScenarios();
+}
+function deleteScenario(id){
+  const arr=loadScenarios(); const s=arr.find(x=>x.id===id); if(!s) return;
+  if(!confirm(`「${s.name}」を削除します。元に戻せません。よろしいですか？`)) return;
+  saveScenarios(arr.filter(x=>x.id!==id));
+  if(activeScenId===id) activeScenId=null;
+  renderScenarios();
+}
+function renameScenario(id){
+  const arr=loadScenarios(); const s=arr.find(x=>x.id===id); if(!s) return;
+  const name=prompt('シナリオ名', s.name); if(name===null) return;
+  const note=prompt('メモ・季節など（任意）', s.note||''); if(note===null) return;
+  s.name=name.trim()||s.name; s.note=note.trim();
+  saveScenarios(arr); renderScenarios();
+}
+
+function renderScenarios(){
+  const box=document.getElementById('scen-list'); if(!box) return;
+  const arr=loadScenarios();
+  if(!arr.length){ box.innerHTML='<div class="scen-empty">保存されたシナリオはまだありません。上の「💾 現在の状態を保存」で追加してください。</div>'; return; }
+  box.innerHTML='';
+  arr.slice().reverse().forEach(s=>{
+    const isActive=s.id===activeScenId;
+    const periodsN=(s.data.periods||[]).length, fieldN=(s.data.field||[]).length;
+    const proj=s.data.projName? `プロジェクト：<b>${escHtml(s.data.projName)}</b>　/　` : '';
+    const noteHtml=s.note? `<b>${escHtml(s.note)}</b>　/　` : '';
+    const row=document.createElement('div');
+    row.className='scen-row'+(isActive?' active':'');
+    row.innerHTML=`
+      <div class="scen-info">
+        <div class="scen-name">${escHtml(s.name)}${isActive?'<span class="scen-active-badge">表示中</span>':''}</div>
+        <div class="scen-meta">${noteHtml}${proj}期間${periodsN}件・日次${fieldN}件　/　保存：${s.savedAt}</div>
+      </div>
+      <div class="scen-actions">
+        <button class="load" onclick="loadScenario('${s.id}')">読込</button>
+        <button onclick="overwriteScenario('${s.id}')">上書き保存</button>
+        <button onclick="duplicateScenario('${s.id}')">複製</button>
+        <button onclick="renameScenario('${s.id}')">名前変更</button>
+        <button class="del" onclick="deleteScenario('${s.id}')">削除</button>
+      </div>`;
+    box.appendChild(row);
+  });
+}
+function escHtml(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// =====================================================================
 //  Presets
 // =====================================================================
 const PRESETS={ warm_jp:{efc:1.3,sfw_awd:0.52}, sea:{efc:1.5,sfw_awd:0.45}, cool:{efc:1.0,sfw_awd:0.60} };
@@ -1331,7 +1469,9 @@ function drawLegend(ctx,w,series){
 // =====================================================================
 function exportJSON(){
   readParams();
-  const data=JSON.stringify(state,null,2);
+  // 現在の作業状態に加え、保存済みシナリオ一式も同梱（Box等での一括バックアップ／共有用）
+  const out=Object.assign({}, state, { _scenarios:loadScenarios() });
+  const data=JSON.stringify(out,null,2);
   const name=(state.projName||'AWD_FS')+'.json';
   downloadBlob(data,name,'application/json');
 }
@@ -1341,21 +1481,31 @@ function importJSON(ev){
   reader.onload=e=>{
     try{
       const obj=JSON.parse(e.target.result);
+      // 同梱シナリオがあればマージ取り込み（既存IDは重複回避）
+      let merged=0;
+      if(Array.isArray(obj._scenarios)){
+        const cur=loadScenarios(); const ids=new Set(cur.map(x=>x.id));
+        obj._scenarios.forEach(s=>{ if(s&&s.id){ if(ids.has(s.id)) s.id='s'+Date.now()+Math.floor(Math.random()*1000); cur.push(s); merged++; } });
+        saveScenarios(cur);
+      }
+      delete obj._scenarios;
       state=Object.assign(defaultState(),obj);
       applyStateToInputs();
       // 結果は再計算が必要なので一旦隠す
       ['baseline-results','reduction-results','field-results'].forEach(id=>{const el=document.getElementById(id); if(el)el.style.display='none';});
+      activeScenId=null; renderScenarios();
       saveState();
-      alert('読み込みました：'+(state.projName||file.name));
+      alert('読み込みました：'+(state.projName||file.name)+(merged?`\n（シナリオ ${merged} 件も取り込みました）`:''));
     }catch(err){ alert('JSONの読み込みに失敗しました：'+err.message); }
   };
   reader.readAsText(file);
   ev.target.value='';
 }
 function resetAll(){
-  if(!confirm('入力内容をすべて消去して新規作成します。よろしいですか？\n（保存が必要な場合は先にJSON保存してください）')) return;
+  if(!confirm('現在の入力内容を消去して新規作成します。よろしいですか？\n（保存済みシナリオは消えません。必要なら先に「現在の状態を保存」かJSON保存をしてください）')) return;
   state=defaultState(); applyStateToInputs();
   ['baseline-results','reduction-results','field-results'].forEach(id=>{const el=document.getElementById(id); if(el)el.style.display='none';});
+  activeScenId=null; renderScenarios();
   saveState();
 }
 function downloadBlob(content,filename,type){
@@ -1405,6 +1555,7 @@ function seedDefaults(){
 window.addEventListener('load',()=>{
   loadState();
   if(!state.periods.length){ seedDefaults(); applyStateToInputs(); saveState(); }
+  renderScenarios();
 });
 let resizeTimer=null;
 window.addEventListener('resize',()=>{
