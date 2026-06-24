@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AWD プロジェクト FS ツール — ベースライン・削減量試算</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 14px; background: #f5f7fa; color: #222; }
+  h1 { font-size: 20px; font-weight: 700; }
+  h2 { font-size: 15px; font-weight: 600; margin-bottom: 10px; color: #334; }
+  h3 { font-size: 13px; font-weight: 600; color: #556; margin-bottom: 6px; }
+
+  .app-header { background: #1a3c5e; color: #fff; padding: 14px 24px; display: flex; align-items: center; gap: 12px; }
+  .app-header span { font-size: 12px; opacity: .7; margin-left: auto; }
+
+  .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+
+  .card { background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.1); padding: 18px 20px; margin-bottom: 18px; }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 18px; }
+  @media(max-width:700px) { .grid2,.grid3 { grid-template-columns: 1fr; } }
+
+  .form-row { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; margin-bottom: 14px; }
+  .form-group { display: flex; flex-direction: column; gap: 4px; min-width: 140px; }
+  .form-group label { font-size: 12px; color: #556; font-weight: 500; }
+  .form-group input, .form-group select {
+    border: 1px solid #cdd; border-radius: 5px; padding: 6px 8px;
+    font-size: 13px; width: 100%; background: #fafbfc;
+  }
+  .form-group input:focus, .form-group select:focus {
+    outline: none; border-color: #4a90d9; background: #fff;
+  }
+  .form-group small { font-size: 11px; color: #889; }
+
+  /* summary boxes */
+  .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 18px; }
+  .kpi { border-radius: 8px; padding: 14px 16px; }
+  .kpi-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; opacity: .8; margin-bottom: 4px; }
+  .kpi-value { font-size: 26px; font-weight: 700; line-height: 1; }
+  .kpi-unit { font-size: 12px; opacity: .7; margin-top: 3px; }
+  .kpi-blue { background: #e8f1fb; color: #1a5fa8; }
+  .kpi-green { background: #e6f7ee; color: #1a7a46; }
+  .kpi-orange { background: #fff3e0; color: #b45309; }
+  .kpi-gray  { background: #f0f0f4; color: #334; }
+
+  /* table */
+  .tbl-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+  thead th { background: #f0f4f8; color: #445; font-weight: 600; padding: 7px 8px; text-align: center; position: sticky; top: 0; border-bottom: 2px solid #dde; }
+  tbody td { padding: 5px 8px; border-bottom: 1px solid #eef; text-align: right; }
+  tbody td:first-child { text-align: left; }
+  tbody tr:hover td { background: #f5f8ff; }
+  .td-awd { color: #1a7a46; font-weight: 600; }
+  .td-base { color: #1a5fa8; }
+  .td-diff { color: #b45309; font-weight: 600; }
+  .td-awdmark { background: #e6f7ee; }
+
+  /* period table */
+  .period-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .period-tbl th { background: #f0f4f8; padding: 7px 10px; text-align: left; border-bottom: 2px solid #dde; }
+  .period-tbl td { padding: 6px 8px; border-bottom: 1px solid #eef; vertical-align: middle; }
+  .period-tbl input, .period-tbl select { width: 100%; border: 1px solid #cdd; border-radius: 4px; padding: 4px 6px; font-size: 13px; background: #fafbfc; }
+  .period-tbl input:focus, .period-tbl select:focus { outline: none; border-color: #4a90d9; }
+  .btn-add { background: #e8f1fb; color: #1a5fa8; border: 1px solid #b0cce8; border-radius: 5px; padding: 6px 14px; cursor: pointer; font-size: 13px; font-weight: 600; }
+  .btn-add:hover { background: #d0e4f7; }
+  .btn-del { background: #fde8e8; color: #b71c1c; border: 1px solid #f0b0b0; border-radius: 4px; padding: 3px 8px; cursor: pointer; font-size: 12px; }
+  .btn-del:hover { background: #f8c8c8; }
+  .btn-calc { background: #1a5fa8; color: #fff; border: none; border-radius: 6px; padding: 10px 28px; cursor: pointer; font-size: 14px; font-weight: 700; }
+  .btn-calc:hover { background: #154d8a; }
+  .btn-csv { background: #e6f7ee; color: #1a7a46; border: 1px solid #a3d9bb; border-radius: 5px; padding: 7px 16px; cursor: pointer; font-size: 13px; font-weight: 600; }
+  .btn-csv:hover { background: #c8efd8; }
+
+  /* chart */
+  canvas { display: block; width: 100% !important; max-height: 260px; }
+
+  .tag { display: inline-block; font-size: 10px; border-radius: 3px; padding: 1px 6px; font-weight: 600; }
+  .tag-awd { background: #e6f7ee; color: #1a7a46; }
+  .tag-flood { background: #e8f1fb; color: #1a5fa8; }
+
+  .info-box { background: #fffbe6; border: 1px solid #ffe082; border-radius: 6px; padding: 10px 14px; font-size: 12px; color: #5a4a00; margin-bottom: 14px; }
+  .info-box b { color: #3a2f00; }
+
+  .tabs { display: flex; gap: 0; border-bottom: 2px solid #dde; margin-bottom: 16px; }
+  .tab { padding: 8px 18px; cursor: pointer; font-size: 13px; font-weight: 600; color: #778; border-bottom: 3px solid transparent; margin-bottom: -2px; transition: color .15s; }
+  .tab.active { color: #1a5fa8; border-bottom-color: #1a5fa8; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  .section-sep { margin: 16px 0 12px; border: none; border-top: 1px solid #eef; }
+
+  #no-result { text-align: center; color: #aaa; padding: 30px; font-size: 13px; }
+</style>
+</head>
+<body>
+
+<div class="app-header">
+  <h1>AWD プロジェクト FS ツール</h1>
+  <span>ベースライン・削減量 事前試算 | Tier1/Tier2 モデル</span>
+</div>
+
+<div class="container">
+
+  <!-- INFO -->
+  <div class="info-box">
+    <b>このツールについて：</b>
+    水稲AWDプロジェクトのフィジビリティスタディ（FS）用に、<b>ベースライン（湛水）</b>と<b>AWDシナリオ</b>のメタン排出量・削減量を並列試算します。
+    日最低・最高気温からサイン波補間（IPCC Tier2相当）で日内24時刻温度を推定し、温度補正係数f_Tを自動計算します。
+  </div>
+
+  <!-- PARAMS -->
+  <div class="card">
+    <h2>基本パラメータ設定</h2>
+    <div class="form-row">
+      <div class="form-group">
+        <label>地域プリセット</label>
+        <select id="preset" onchange="applyPreset()">
+          <option value="">カスタム</option>
+          <option value="warm_jp">日本_温暖</option>
+          <option value="sea">東南アジア_高温</option>
+          <option value="cool">冷涼地域</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>EFc（kg CH₄/ha/day）</label>
+        <input type="number" id="efc" value="1.3" step="0.01" min="0.1" max="5">
+        <small>基準メタン排出係数</small>
+      </div>
+      <div class="form-group">
+        <label>SFw_AWD（AWD時）</label>
+        <input type="number" id="sfw_awd" value="0.52" step="0.01" min="0.1" max="1">
+        <small>湛水=1.0 固定</small>
+      </div>
+      <div class="form-group">
+        <label>SFo（有機物係数）</label>
+        <input type="number" id="sfo" value="1.0" step="0.01" min="0.5" max="3">
+        <small>通常1.0（わら還元等で増加）</small>
+      </div>
+      <div class="form-group">
+        <label>SFs（土壌係数）</label>
+        <input type="number" id="sfs" value="1.0" step="0.01" min="0.5" max="3">
+        <small>通常1.0</small>
+      </div>
+      <div class="form-group">
+        <label>Q10（温度感度係数）</label>
+        <input type="number" id="q10" value="2.0" step="0.1" min="1" max="5">
+        <small>通常2.0</small>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>圃場面積（ha）</label>
+        <input type="number" id="area" value="1.0" step="0.01" min="0.01">
+        <small>kgCH₄/日・tCO₂e換算に使用</small>
+      </div>
+      <div class="form-group">
+        <label>CH₄ GWP（AR換算）</label>
+        <select id="gwp">
+          <option value="28">28（AR5 100yr）</option>
+          <option value="27">27（AR6 100yr）</option>
+          <option value="34">34（AR5 20yr）</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>プロジェクト期間（年）</label>
+        <input type="number" id="proj_years" value="5" min="1" max="30">
+        <small>年間削減量の積算に使用</small>
+      </div>
+    </div>
+  </div>
+
+  <!-- PERIODS -->
+  <div class="card">
+    <h2>作付期間 &amp; 水管理スケジュール設定</h2>
+    <p style="font-size:12px;color:#778;margin-bottom:12px;">
+      各期間について日付範囲・代表的な最低/最高気温・水管理タイプを設定してください。
+      AWD排水判定は「連続3日以上排水」ルールに従い、SFwを自動切替えします。
+    </p>
+    <div class="tbl-wrap">
+      <table class="period-tbl">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>期間名</th>
+            <th>開始日</th>
+            <th>終了日</th>
+            <th>日最低気温 (℃)</th>
+            <th>日最高気温 (℃)</th>
+            <th>水管理 (ベースライン)</th>
+            <th>水管理 (AWDシナリオ)</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="period-tbody"></tbody>
+      </table>
+    </div>
+    <div style="margin-top:10px;display:flex;gap:10px;align-items:center;">
+      <button class="btn-add" onclick="addPeriod()">＋ 期間を追加</button>
+      <span style="font-size:11px;color:#aaa;">最大20期間まで追加できます</span>
+    </div>
+  </div>
+
+  <!-- CALC BUTTON -->
+  <div style="text-align:center;margin-bottom:20px;">
+    <button class="btn-calc" onclick="calculate()">▶ 試算を実行</button>
+  </div>
+
+  <!-- RESULTS -->
+  <div id="results" style="display:none">
+
+    <!-- KPI -->
+    <div class="summary-grid">
+      <div class="kpi kpi-blue">
+        <div class="kpi-label">ベースライン排出量</div>
+        <div class="kpi-value" id="kpi-base">—</div>
+        <div class="kpi-unit">tCO₂e / 作付期間</div>
+      </div>
+      <div class="kpi kpi-green">
+        <div class="kpi-label">AWDシナリオ排出量</div>
+        <div class="kpi-value" id="kpi-awd">—</div>
+        <div class="kpi-unit">tCO₂e / 作付期間</div>
+      </div>
+      <div class="kpi kpi-orange">
+        <div class="kpi-label">削減量（今期）</div>
+        <div class="kpi-value" id="kpi-reduc">—</div>
+        <div class="kpi-unit">tCO₂e / 作付期間</div>
+      </div>
+      <div class="kpi kpi-gray">
+        <div class="kpi-label">削減率</div>
+        <div class="kpi-value" id="kpi-rate">—</div>
+        <div class="kpi-unit">% 削減</div>
+      </div>
+      <div class="kpi kpi-green" style="background:#f0fdf4;color:#166534;">
+        <div class="kpi-label">プロジェクト期間 積算削減</div>
+        <div class="kpi-value" id="kpi-total">—</div>
+        <div class="kpi-unit" id="kpi-total-unit">tCO₂e</div>
+      </div>
+    </div>
+
+    <!-- TABS -->
+    <div class="card">
+      <div class="tabs">
+        <div class="tab active" onclick="switchTab('chart')">グラフ</div>
+        <div class="tab" onclick="switchTab('detail')">日次詳細</div>
+        <div class="tab" onclick="switchTab('period')">期間別サマリー</div>
+      </div>
+
+      <!-- CHART TAB -->
+      <div id="tab-chart" class="tab-panel active">
+        <canvas id="chart1"></canvas>
+      </div>
+
+      <!-- DETAIL TAB -->
+      <div id="tab-detail" class="tab-panel">
+        <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
+          <button class="btn-csv" onclick="exportCSV()">CSV ダウンロード</button>
+        </div>
+        <div class="tbl-wrap" style="max-height:400px;overflow-y:auto;">
+          <table id="detail-table">
+            <thead>
+              <tr>
+                <th>日付</th>
+                <th>期間名</th>
+                <th>最低℃</th>
+                <th>最高℃</th>
+                <th>平均℃</th>
+                <th>f_T</th>
+                <th>水管理(Base)</th>
+                <th>SFw(Base)</th>
+                <th>水管理(AWD)</th>
+                <th>SFw(AWD)</th>
+                <th>排出量Base<br>(kgCH₄/ha)</th>
+                <th>排出量AWD<br>(kgCH₄/ha)</th>
+                <th>tCO₂e Base</th>
+                <th>tCO₂e AWD</th>
+                <th>削減量 tCO₂e</th>
+              </tr>
+            </thead>
+            <tbody id="detail-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- PERIOD SUMMARY TAB -->
+      <div id="tab-period" class="tab-panel">
+        <div class="tbl-wrap">
+          <table id="period-summary-table">
+            <thead>
+              <tr>
+                <th>期間名</th>
+                <th>日数</th>
+                <th>平均気温</th>
+                <th>平均f_T</th>
+                <th>Base 排出<br>(tCO₂e)</th>
+                <th>AWD 排出<br>(tCO₂e)</th>
+                <th>削減量<br>(tCO₂e)</th>
+                <th>削減率</th>
+              </tr>
+            </thead>
+            <tbody id="period-summary-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ============================================================
+// State
+// ============================================================
+let periods = [];
+let dailyData = [];
+
+const PRESETS = {
+  warm_jp: { efc: 1.3, sfw_awd: 0.52 },
+  sea:     { efc: 1.5, sfw_awd: 0.45 },
+  cool:    { efc: 1.0, sfw_awd: 0.60 },
+};
+
+const WATER_OPTS = [
+  { value: 'flood',  label: '湛水 (SFw=1.0)' },
+  { value: 'awd',    label: 'AWD排水 (SFw=auto)' },
+];
+
+// ============================================================
+// Init
+// ============================================================
+function init() {
+  // Default periods for typical rice season
+  const today = new Date();
+  const y = today.getFullYear();
+  addPeriodData(`移植〜活着期`, fmt(new Date(y,4,1)), fmt(new Date(y,4,20)), 18, 26, 'flood', 'flood');
+  addPeriodData(`分げつ初期`, fmt(new Date(y,4,21)), fmt(new Date(y,5,10)), 20, 29, 'flood', 'awd');
+  addPeriodData(`分げつ盛期〜中干し`, fmt(new Date(y,5,11)), fmt(new Date(y,6,5)), 22, 33, 'flood', 'awd');
+  addPeriodData(`出穂前後`, fmt(new Date(y,6,6)), fmt(new Date(y,7,10)), 24, 34, 'flood', 'flood');
+  addPeriodData(`登熟〜落水`, fmt(new Date(y,7,11)), fmt(new Date(y,8,20)), 22, 32, 'flood', 'awd');
+  renderPeriods();
+}
+
+function fmt(d) {
+  return d.toISOString().split('T')[0];
+}
+
+function addPeriodData(name, start, end, tmin, tmax, waterBase, waterAwd) {
+  periods.push({ name, start, end, tmin, tmax, waterBase, waterAwd });
+}
+
+function renderPeriods() {
+  const tbody = document.getElementById('period-tbody');
+  tbody.innerHTML = '';
+  periods.forEach((p, i) => {
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td style="text-align:center;color:#aaa">${i+1}</td>
+      <td><input value="${p.name}" onchange="periods[${i}].name=this.value" style="min-width:120px"></td>
+      <td><input type="date" value="${p.start}" onchange="periods[${i}].start=this.value"></td>
+      <td><input type="date" value="${p.end}" onchange="periods[${i}].end=this.value"></td>
+      <td><input type="number" value="${p.tmin}" step="0.5" onchange="periods[${i}].tmin=parseFloat(this.value)"></td>
+      <td><input type="number" value="${p.tmax}" step="0.5" onchange="periods[${i}].tmax=parseFloat(this.value)"></td>
+      <td><select onchange="periods[${i}].waterBase=this.value">
+        <option value="flood" ${p.waterBase==='flood'?'selected':''}>湛水 (SFw=1.0)</option>
+        <option value="awd" ${p.waterBase==='awd'?'selected':''}>AWD排水</option>
+      </select></td>
+      <td><select onchange="periods[${i}].waterAwd=this.value">
+        <option value="flood" ${p.waterAwd==='flood'?'selected':''}>湛水 (SFw=1.0)</option>
+        <option value="awd" ${p.waterAwd==='awd'?'selected':''}>AWD排水</option>
+      </select></td>
+      <td><button class="btn-del" onclick="deletePeriod(${i})">✕</button></td>
+    `;
+    tbody.appendChild(row);
+  });
+}
+
+function addPeriod() {
+  if (periods.length >= 20) { alert('最大20期間まで設定できます'); return; }
+  const last = periods[periods.length - 1];
+  let start = last ? addDays(last.end, 1) : fmt(new Date());
+  let end   = addDays(start, 14);
+  addPeriodData(`期間${periods.length+1}`, start, end, 20, 30, 'flood', 'awd');
+  renderPeriods();
+}
+
+function deletePeriod(i) {
+  periods.splice(i, 1);
+  renderPeriods();
+}
+
+function addDays(dateStr, n) {
+  const d = new Date(dateStr);
+  d.setDate(d.getDate() + n);
+  return fmt(d);
+}
+
+function applyPreset() {
+  const key = document.getElementById('preset').value;
+  if (!key) return;
+  const p = PRESETS[key];
+  document.getElementById('efc').value = p.efc;
+  document.getElementById('sfw_awd').value = p.sfw_awd;
+}
+
+// ============================================================
+// Core calculation
+// ============================================================
+function calcFT(tmin, tmax, q10) {
+  // Sine interpolation: Tmin at hour 5, Tmax at hour 14
+  // T(h) = mean + amp * sin(2π*(h-8)/24)  (phase shift: peak at h=14 → 14-8=6... using standard formula below)
+  let sum = 0;
+  const mean = (tmin + tmax) / 2;
+  const amp  = (tmax - tmin) / 2;
+  for (let h = 0; h < 24; h++) {
+    const T = mean + amp * Math.sin(2 * Math.PI * (h - 8) / 24);
+    sum += Math.pow(q10, (T - 25) / 10);
+  }
+  return sum / 24;
+}
+
+function getSFw(waterType, sfw_awd) {
+  return waterType === 'flood' ? 1.0 : sfw_awd;
+}
+
+function calculate() {
+  const efc      = parseFloat(document.getElementById('efc').value);
+  const sfw_awd  = parseFloat(document.getElementById('sfw_awd').value);
+  const sfo      = parseFloat(document.getElementById('sfo').value);
+  const sfs      = parseFloat(document.getElementById('sfs').value);
+  const q10      = parseFloat(document.getElementById('q10').value);
+  const area     = parseFloat(document.getElementById('area').value);
+  const gwp      = parseFloat(document.getElementById('gwp').value);
+  const projYrs  = parseInt(document.getElementById('proj_years').value);
+
+  if (!periods.length) { alert('期間を1つ以上設定してください'); return; }
+
+  dailyData = [];
+
+  periods.forEach(p => {
+    const start = new Date(p.start);
+    const end   = new Date(p.end);
+    if (isNaN(start) || isNaN(end) || end < start) return;
+    const fT = calcFT(p.tmin, p.tmax, q10);
+    const sfwBase = getSFw(p.waterBase, sfw_awd);
+    const sfwAwd  = getSFw(p.waterAwd,  sfw_awd);
+
+    const emitBase_ha = efc * sfwBase * sfo * sfs * fT;  // kgCH4/ha/day
+    const emitAwd_ha  = efc * sfwAwd  * sfo * sfs * fT;
+
+    let cur = new Date(start);
+    while (cur <= end) {
+      const emitBase_kg  = emitBase_ha * area;
+      const emitAwd_kg   = emitAwd_ha  * area;
+      const co2eBase     = emitBase_kg * gwp / 1000;
+      const co2eAwd      = emitAwd_kg  * gwp / 1000;
+
+      dailyData.push({
+        date:      fmt(cur),
+        periodName: p.name,
+        tmin:      p.tmin,
+        tmax:      p.tmax,
+        tavg:      +((p.tmin + p.tmax) / 2).toFixed(1),
+        fT:        +fT.toFixed(4),
+        waterBase: p.waterBase,
+        sfwBase,
+        waterAwd:  p.waterAwd,
+        sfwAwd,
+        emitBase_ha: +emitBase_ha.toFixed(4),
+        emitAwd_ha:  +emitAwd_ha.toFixed(4),
+        co2eBase:  +co2eBase.toFixed(5),
+        co2eAwd:   +co2eAwd.toFixed(5),
+        reduction: +(co2eBase - co2eAwd).toFixed(5),
+      });
+
+      cur.setDate(cur.getDate() + 1);
+    }
+  });
+
+  if (!dailyData.length) { alert('有効な期間データがありません'); return; }
+
+  renderResults(projYrs, gwp);
+}
+
+function renderResults(projYrs, gwp) {
+  const totalBase   = dailyData.reduce((s, d) => s + d.co2eBase, 0);
+  const totalAwd    = dailyData.reduce((s, d) => s + d.co2eAwd,  0);
+  const totalReduc  = totalBase - totalAwd;
+  const rate        = totalBase > 0 ? (totalReduc / totalBase * 100) : 0;
+  const projTotal   = totalReduc * projYrs;
+
+  document.getElementById('kpi-base').textContent  = totalBase.toFixed(3);
+  document.getElementById('kpi-awd').textContent   = totalAwd.toFixed(3);
+  document.getElementById('kpi-reduc').textContent = totalReduc.toFixed(3);
+  document.getElementById('kpi-rate').textContent  = rate.toFixed(1) + '%';
+  document.getElementById('kpi-total').textContent = projTotal.toFixed(2);
+  document.getElementById('kpi-total-unit').textContent = `tCO₂e（${projYrs}年間）`;
+
+  renderChart();
+  renderDetailTable();
+  renderPeriodSummary();
+
+  document.getElementById('results').style.display = 'block';
+  document.getElementById('results').scrollIntoView({ behavior: 'smooth' });
+}
+
+// ============================================================
+// Chart
+// ============================================================
+let chartInstance = null;
+
+function renderChart() {
+  const canvas = document.getElementById('chart1');
+  if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
+
+  // Aggregate by period
+  const periodNames = [...new Set(dailyData.map(d => d.periodName))];
+  const baseVals = periodNames.map(n => {
+    const rows = dailyData.filter(d => d.periodName === n);
+    return +rows.reduce((s, d) => s + d.co2eBase, 0).toFixed(4);
+  });
+  const awdVals = periodNames.map(n => {
+    const rows = dailyData.filter(d => d.periodName === n);
+    return +rows.reduce((s, d) => s + d.co2eAwd, 0).toFixed(4);
+  });
+  const reducVals = periodNames.map((_, i) => +(baseVals[i] - awdVals[i]).toFixed(4));
+
+  const ctx = canvas.getContext('2d');
+  chartInstance = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: periodNames,
+      datasets: [
+        {
+          label: 'ベースライン (tCO₂e)',
+          data: baseVals,
+          backgroundColor: 'rgba(26,95,168,0.6)',
+          borderColor: 'rgba(26,95,168,0.9)',
+          borderWidth: 1,
+        },
+        {
+          label: 'AWDシナリオ (tCO₂e)',
+          data: awdVals,
+          backgroundColor: 'rgba(26,122,70,0.6)',
+          borderColor: 'rgba(26,122,70,0.9)',
+          borderWidth: 1,
+        },
+        {
+          label: '削減量 (tCO₂e)',
+          data: reducVals,
+          backgroundColor: 'rgba(180,83,9,0.55)',
+          borderColor: 'rgba(180,83,9,0.9)',
+          borderWidth: 1,
+          type: 'line',
+          yAxisID: 'y2',
+          tension: 0.3,
+          pointRadius: 5,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { position: 'top', labels: { font: { size: 12 } } },
+        tooltip: {
+          callbacks: {
+            label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y.toFixed(4)} tCO₂e`
+          }
+        }
+      },
+      scales: {
+        x: { ticks: { font: { size: 11 } } },
+        y: {
+          title: { display: true, text: 'tCO₂e', font: { size: 11 } },
+          beginAtZero: true,
+        },
+        y2: {
+          title: { display: true, text: '削減量 (tCO₂e)', font: { size: 11 } },
+          position: 'right',
+          beginAtZero: true,
+          grid: { drawOnChartArea: false },
+        }
+      }
+    }
+  });
+}
+
+// ============================================================
+// Detail table
+// ============================================================
+function renderDetailTable() {
+  const tbody = document.getElementById('detail-tbody');
+  tbody.innerHTML = '';
+  dailyData.forEach(d => {
+    const awdCls = d.waterAwd === 'awd' ? 'td-awdmark' : '';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${d.date}</td>
+      <td>${d.periodName}</td>
+      <td class="td-base">${d.tmin}</td>
+      <td class="td-base">${d.tmax}</td>
+      <td>${d.tavg}</td>
+      <td>${d.fT}</td>
+      <td><span class="tag ${d.waterBase==='flood'?'tag-flood':'tag-awd'}">${d.waterBase==='flood'?'湛水':'AWD'}</span></td>
+      <td class="td-base">${d.sfwBase.toFixed(2)}</td>
+      <td class="${awdCls}"><span class="tag ${d.waterAwd==='flood'?'tag-flood':'tag-awd'}">${d.waterAwd==='flood'?'湛水':'AWD'}</span></td>
+      <td class="td-awd ${awdCls}">${d.sfwAwd.toFixed(2)}</td>
+      <td class="td-base">${d.emitBase_ha}</td>
+      <td class="td-awd">${d.emitAwd_ha}</td>
+      <td class="td-base">${d.co2eBase}</td>
+      <td class="td-awd">${d.co2eAwd}</td>
+      <td class="td-diff">${d.reduction > 0 ? '+' : ''}${d.reduction}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+// ============================================================
+// Period summary
+// ============================================================
+function renderPeriodSummary() {
+  const periodNames = [...new Set(dailyData.map(d => d.periodName))];
+  const tbody = document.getElementById('period-summary-tbody');
+  tbody.innerHTML = '';
+
+  let totBase = 0, totAwd = 0, totDays = 0;
+
+  periodNames.forEach(n => {
+    const rows = dailyData.filter(d => d.periodName === n);
+    const days  = rows.length;
+    const avgT  = (rows.reduce((s,d) => s + d.tavg, 0) / days).toFixed(1);
+    const avgFT = (rows.reduce((s,d) => s + d.fT, 0) / days).toFixed(4);
+    const base  = rows.reduce((s,d) => s + d.co2eBase, 0);
+    const awd   = rows.reduce((s,d) => s + d.co2eAwd,  0);
+    const reduc = base - awd;
+    const rate  = base > 0 ? (reduc / base * 100) : 0;
+    totBase += base; totAwd += awd; totDays += days;
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td style="text-align:left;font-weight:600">${n}</td>
+      <td>${days} 日</td>
+      <td>${avgT} ℃</td>
+      <td>${avgFT}</td>
+      <td class="td-base">${base.toFixed(4)}</td>
+      <td class="td-awd">${awd.toFixed(4)}</td>
+      <td class="td-diff">${reduc > 0 ? '+' : ''}${reduc.toFixed(4)}</td>
+      <td class="td-diff">${rate.toFixed(1)}%</td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  // Total row
+  const totReduc = totBase - totAwd;
+  const totRate  = totBase > 0 ? (totReduc / totBase * 100) : 0;
+  const tfoot = document.createElement('tr');
+  tfoot.style.fontWeight = '700';
+  tfoot.style.background = '#f5f5ff';
+  tfoot.innerHTML = `
+    <td>合計</td>
+    <td>${totDays} 日</td>
+    <td>—</td><td>—</td>
+    <td class="td-base">${totBase.toFixed(4)}</td>
+    <td class="td-awd">${totAwd.toFixed(4)}</td>
+    <td class="td-diff">${totReduc > 0 ? '+' : ''}${totReduc.toFixed(4)}</td>
+    <td class="td-diff">${totRate.toFixed(1)}%</td>
+  `;
+  tbody.appendChild(tfoot);
+}
+
+// ============================================================
+// CSV export
+// ============================================================
+function exportCSV() {
+  const headers = ['日付','期間名','最低℃','最高℃','平均℃','f_T','水管理_Base','SFw_Base','水管理_AWD','SFw_AWD','排出量Base(kgCH4/ha)','排出量AWD(kgCH4/ha)','tCO2e_Base','tCO2e_AWD','削減量_tCO2e'];
+  const rows = dailyData.map(d => [
+    d.date, d.periodName, d.tmin, d.tmax, d.tavg, d.fT,
+    d.waterBase, d.sfwBase, d.waterAwd, d.sfwAwd,
+    d.emitBase_ha, d.emitAwd_ha, d.co2eBase, d.co2eAwd, d.reduction
+  ]);
+  const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'AWD_FS_trial.csv';
+  a.click();
+}
+
+// ============================================================
+// Tabs
+// ============================================================
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach((t, i) => {
+    const panels = ['chart','detail','period'];
+    t.classList.toggle('active', panels[i] === name);
+  });
+  document.querySelectorAll('.tab-panel').forEach(p => {
+    p.classList.toggle('active', p.id === 'tab-' + name);
+  });
+}
+
+// ============================================================
+// Chart.js CDN (loaded inline as fallback-safe)
+// ============================================================
+function loadChart() {
+  return new Promise((resolve, reject) => {
+    if (window.Chart) { resolve(); return; }
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js';
+    s.onload = resolve;
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+
+loadChart().then(() => init());
+</script>
+</body>
+</html>
