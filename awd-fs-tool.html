@@ -306,6 +306,7 @@
     <div class="tab active" data-tab="baseline" onclick="switchTab('baseline')"><span class="num">1</span>ベースライン想定</div>
     <div class="tab" data-tab="reduction" onclick="switchTab('reduction')"><span class="num">2</span>削減量想定（手弁当）</div>
     <div class="tab" data-tab="field" onclick="switchTab('field')"><span class="num">3</span>現地FSデータ入力</div>
+    <div class="tab" data-tab="measure" onclick="switchTab('measure')"><span class="num">4</span>実測メタン記録</div>
     <div class="tab" data-tab="guide" onclick="switchTab('guide')">📖 解説・用語</div>
   </div>
 
@@ -407,6 +408,11 @@
             <div class="kpi-value" id="rd-reduc">—</div>
             <div class="kpi-unit">tCO₂e</div>
           </div>
+          <div class="kpi kpi-orange">
+            <div class="kpi-label">削減量/ha/年（年1作想定）</div>
+            <div class="kpi-value" id="rd-reduc-ha">—</div>
+            <div class="kpi-unit">tCO₂e/ha/年</div>
+          </div>
           <div class="kpi kpi-gray">
             <div class="kpi-label">削減率</div>
             <div class="kpi-value" id="rd-rate">—</div>
@@ -482,6 +488,11 @@
             <div class="kpi-value" id="fd-reduc">—</div>
             <div class="kpi-unit">tCO₂e</div>
           </div>
+          <div class="kpi kpi-orange">
+            <div class="kpi-label">削減量/ha/年（実測・年換算）</div>
+            <div class="kpi-value" id="fd-reduc-ha">—</div>
+            <div class="kpi-unit">tCO₂e/ha/年</div>
+          </div>
           <div class="kpi kpi-gray">
             <div class="kpi-label">削減率</div>
             <div class="kpi-value" id="fd-rate">—</div>
@@ -505,6 +516,94 @@
             <thead><tr><th>日付</th><th>最低℃</th><th>最高℃</th><th>水位</th><th>連続排水</th><th>判定</th><th>SFw</th><th>f_T</th><th>Base<br>tCO₂e</th><th>実測<br>tCO₂e</th><th>削減<br>tCO₂e</th></tr></thead>
             <tbody id="fd-tbody"></tbody>
             <tfoot id="fd-tfoot"></tfoot>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---------- ④ 実測メタン記録 ---------- -->
+    <div class="tab-panel" id="panel-measure">
+      <div class="info">
+        <b>④ 実測メタン記録：</b>現地でチャンバー法等により実測したメタンフラックス（<b>gCH₄/m²/日</b>）を計測日ごとに記録します。
+        ③で入力した同じ日付の気温・水位からモデルが推定する排出量を自動換算して並べ、<b>実測 vs 推定の差</b>を観察できます。
+        実測値からは現地固有の<b>EFc（基準排出係数）も逆算</b>し、モデルのキャリブレーションに使えます。
+      </div>
+      <div class="note">
+        <b>使い方の考え方：</b>FS（事前検討）段階では実測値はまだありません。このタブは<b>プロジェクト実施中のモニタリング</b>で、週1〜2回のチャンバー計測値を蓄積し、①②の推定モデルが現地で妥当かを検証する用途です。
+        実測フラックスの単位は <b>gCH₄/m²/日</b>（チャンバー法の一般的な出力単位）で入力してください。
+      </div>
+
+      <details>
+        <summary>📋 Excelからまとめて貼り付け（任意）</summary>
+        <p class="muted" style="margin:6px 0">「日付・実測フラックス(gCH₄/m²/日)・メモ」の列を選択しコピー → 貼り付けて「取り込み」。メモ列は省略可。</p>
+        <textarea class="paste" id="pasteMeasureBox" placeholder="2026-06-08	0.18	A圃場 地点1&#10;2026-06-15	0.09	落水3日目&#10;2026-06-22	0.07 ..."></textarea>
+        <div class="actions-bar" style="margin:8px 0 0">
+          <button class="btn btn-light btn-sm" onclick="importMeasurePaste()">取り込み</button>
+          <span class="muted">※既存の行に追加されます</span>
+        </div>
+      </details>
+
+      <h3 style="margin-top:14px">実測フラックス入力</h3>
+      <div class="tbl-wrap" style="max-height:380px;overflow-y:auto">
+        <table class="editable" id="measure-input-table">
+          <thead>
+            <tr><th>#</th><th>計測日</th><th>実測フラックス<br>gCH₄/m²/日</th><th>メモ（地点・手法など）</th><th></th></tr>
+          </thead>
+          <tbody id="measure-input-tbody"></tbody>
+        </table>
+      </div>
+      <div class="actions-bar">
+        <button class="btn btn-light btn-sm" onclick="addMeasureRow()">＋ 行を追加</button>
+        <button class="btn btn-del" onclick="clearMeasure()">全行クリア</button>
+        <button class="btn btn-primary" onclick="calcMeasure()">▶ 推定と比較</button>
+      </div>
+
+      <div id="measure-results" style="display:none">
+        <div class="kpi-grid">
+          <div class="kpi kpi-green">
+            <div class="kpi-label">実測フラックス平均</div>
+            <div class="kpi-value" id="ms-actavg">—</div>
+            <div class="kpi-unit">gCH₄/m²/日</div>
+          </div>
+          <div class="kpi kpi-blue">
+            <div class="kpi-label">モデル推定平均（同日）</div>
+            <div class="kpi-value" id="ms-estavg">—</div>
+            <div class="kpi-unit">gCH₄/m²/日</div>
+          </div>
+          <div class="kpi kpi-orange">
+            <div class="kpi-label">平均かい離（実測÷推定）</div>
+            <div class="kpi-value" id="ms-ratio">—</div>
+            <div class="kpi-unit">倍（1.0で一致）</div>
+          </div>
+          <div class="kpi kpi-teal">
+            <div class="kpi-label">逆算した現地EFc（平均）</div>
+            <div class="kpi-value" id="ms-efc">—</div>
+            <div class="kpi-unit">kgCH₄/ha/日</div>
+          </div>
+          <div class="kpi kpi-green">
+            <div class="kpi-label">実測の年間排出（平均flux×365）</div>
+            <div class="kpi-value" id="ms-actco2">—</div>
+            <div class="kpi-unit">tCO₂e/ha/年</div>
+          </div>
+          <div class="kpi kpi-gray">
+            <div class="kpi-label">照合できた計測点</div>
+            <div class="kpi-value" id="ms-matched">—</div>
+            <div class="kpi-unit">点</div>
+          </div>
+        </div>
+        <div class="info" id="ms-efc-hint" style="display:none"></div>
+        <div class="chart-box">
+          <div class="chart-title">実測フラックス vs モデル推定（gCH₄/m²/日）</div>
+          <canvas id="ms-chart"></canvas>
+        </div>
+        <div class="actions-bar" style="justify-content:flex-end">
+          <button class="btn btn-green btn-sm" onclick="exportMeasureCSV()">CSVダウンロード</button>
+        </div>
+        <div class="tbl-wrap" style="max-height:380px;overflow-y:auto">
+          <table id="ms-table">
+            <thead><tr><th>計測日</th><th>実測<br>gCH₄/m²/日</th><th>推定<br>gCH₄/m²/日</th><th>差<br>(実測−推定)</th><th>実測÷推定</th><th>判定<br>(③より)</th><th>逆算EFc</th><th>メモ</th></tr></thead>
+            <tbody id="ms-tbody"></tbody>
+            <tfoot id="ms-tfoot"></tfoot>
           </table>
         </div>
       </div>
@@ -869,7 +968,8 @@ function defaultState(){
     projName:'',
     params:{ preset:'', efc:1.3, sfw_awd:0.52, sfo:1.0, sfs:1.0, q10:2.0, area:1.0, gwp:28, projYears:5 },
     periods:[],
-    field:[]
+    field:[],
+    measure:[]
   };
 }
 
@@ -920,7 +1020,7 @@ function applyStateToInputs(){
   setVal('preset',p.preset); setVal('efc',p.efc); setVal('sfw_awd',p.sfw_awd);
   setVal('sfo',p.sfo); setVal('sfs',p.sfs); setVal('q10',p.q10);
   setVal('area',p.area); setVal('gwp',p.gwp); setVal('projYears',p.projYears);
-  renderPeriods(); renderFieldInput();
+  renderPeriods(); renderFieldInput(); renderMeasureInput();
 }
 function setVal(id,v){ const e=document.getElementById(id); if(e!=null&&v!=null) e.value=v; }
 
@@ -938,7 +1038,7 @@ function saveScenarios(arr){
 }
 function snapshot(){
   readParams();
-  return JSON.parse(JSON.stringify({ projName:state.projName, params:state.params, periods:state.periods, field:state.field }));
+  return JSON.parse(JSON.stringify({ projName:state.projName, params:state.params, periods:state.periods, field:state.field, measure:state.measure }));
 }
 function nowStr(){
   const d=new Date(), p=n=>String(n).padStart(2,'0');
@@ -968,7 +1068,7 @@ function loadScenario(id){
   const arr=loadScenarios(); const s=arr.find(x=>x.id===id); if(!s) return;
   state=Object.assign(defaultState(), JSON.parse(JSON.stringify(s.data)));
   applyStateToInputs();
-  ['baseline-results','reduction-results','field-results'].forEach(i=>{const el=document.getElementById(i); if(el)el.style.display='none';});
+  ['baseline-results','reduction-results','field-results','measure-results'].forEach(i=>{const el=document.getElementById(i); if(el)el.style.display='none';});
   activeScenId=id;
   saveState(); renderScenarios();
   document.querySelector('.container').scrollIntoView({behavior:'smooth'});
@@ -1195,6 +1295,7 @@ function calcReduction(){
   document.getElementById('rd-base').textContent=totBase.toFixed(3);
   document.getElementById('rd-awd').textContent=totAwd.toFixed(3);
   document.getElementById('rd-reduc').textContent=reduc.toFixed(3);
+  document.getElementById('rd-reduc-ha').textContent=area>0?(reduc/area).toFixed(3):'—';
   document.getElementById('rd-rate').textContent=rate.toFixed(1)+'%';
   document.getElementById('rd-total').textContent=projTotal.toFixed(2);
   document.getElementById('rd-total-unit').textContent=`tCO₂e（${projYears}年）`;
@@ -1327,6 +1428,8 @@ function calcField(){
   document.getElementById('fd-base').textContent=totBase.toFixed(3);
   document.getElementById('fd-actual').textContent=totAct.toFixed(3);
   document.getElementById('fd-reduc').textContent=reduc.toFixed(3);
+  // 計測期間(rows.length日)の削減/ha を 365日に年換算
+  document.getElementById('fd-reduc-ha').textContent=(area>0&&rows.length>0)?((reduc/area)*(365/rows.length)).toFixed(3):'—';
   document.getElementById('fd-rate').textContent=rate.toFixed(1)+'%';
   document.getElementById('fd-awddays').textContent=`${awdDays} / ${rows.length}`;
 
@@ -1359,6 +1462,155 @@ function exportFieldCSV(){
     r.sfw.toFixed(3),r.fT.toFixed(4),r.base.toFixed(5),r.act.toFixed(5),r.reduc.toFixed(5),r.cumBase.toFixed(5),r.cumAct.toFixed(5)]);
   const csv=[head,...lines].map(r=>r.join(',')).join('\n');
   downloadBlob('﻿'+csv, (state.projName||'AWD_FS')+'_field.csv', 'text/csv;charset=utf-8');
+}
+
+// =====================================================================
+//  ④ Measured methane (実測フラックス) — 推定との比較
+//  単位換算：kgCH4/ha/day × 0.1 = gCH4/m2/day
+//    （1 kg = 1000 g、1 ha = 10000 m² → 1000/10000 = 0.1）
+// =====================================================================
+const KGHA_TO_GM2 = 0.1;
+
+function addMeasureRow(){
+  const last=state.measure[state.measure.length-1];
+  const date=last&&last.date? addDays(last.date,7) : fmt(new Date()); // 計測は週1想定で+7日
+  state.measure.push({date, flux:'', note:''});
+  renderMeasureInput(); saveState();
+}
+function clearMeasure(){ if(state.measure.length&&confirm('実測記録を全件削除します。よろしいですか？')){ state.measure=[]; renderMeasureInput(); saveState(); } }
+function deleteMeasureRow(i){ state.measure.splice(i,1); renderMeasureInput(); saveState(); }
+function updMeasure(i,key,v){
+  state.measure[i][key]=(key==='flux')? v : v;
+  saveState();
+}
+function importMeasurePaste(){
+  const txt=document.getElementById('pasteMeasureBox').value.trim();
+  if(!txt){ alert('貼り付けデータがありません'); return; }
+  let added=0;
+  txt.split(/\r?\n/).forEach(line=>{
+    if(!line.trim()) return;
+    const cells=line.split(/\t|,/).map(c=>c.trim());
+    const date=parseDate(cells[0]); if(!date) return;
+    const flux=parseFloat(cells[1]);
+    state.measure.push({date, flux:isNaN(flux)?'':flux, note:cells[2]||''});
+    added++;
+  });
+  document.getElementById('pasteMeasureBox').value='';
+  renderMeasureInput(); saveState();
+  alert(added+' 件を取り込みました');
+}
+function renderMeasureInput(){
+  const tb=document.getElementById('measure-input-tbody'); if(!tb) return;
+  tb.innerHTML='';
+  if(state.measure.length===0){
+    tb.innerHTML='<tr><td colspan="5" class="empty">「＋ 行を追加」または貼り付けで実測フラックスを登録してください</td></tr>';
+    return;
+  }
+  state.measure.forEach((row,i)=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td style="text-align:center;color:#9aa5b1">${i+1}</td>
+      <td><input type="date" value="${row.date||''}" onchange="updMeasure(${i},'date',this.value)"></td>
+      <td><input type="number" step="0.001" value="${row.flux}" onchange="updMeasure(${i},'flux',this.value)" placeholder="例 0.15"></td>
+      <td><input value="${esc(row.note||'')}" onchange="updMeasure(${i},'note',this.value)" placeholder="地点・手法など"></td>
+      <td><button class="btn-del" onclick="deleteMeasureRow(${i})">✕</button></td>`;
+    tb.appendChild(tr);
+  });
+}
+
+let measureComputed=[]; // CSV用
+function calcMeasure(){
+  readParams();
+  if(!state.measure.length){ alert('実測フラックスを入力してください'); return; }
+  const {efc,sfw_awd,sfo,sfs,q10,gwp}=state.params;
+  // ③の日次データを日付キーで参照（気温・判定の取得用）
+  const fieldMap={};
+  computeDrainage(state.field).forEach(r=>{ if(r.date) fieldMap[r.date]=r; });
+
+  let rows=[], sumAct=0, sumEst=0, sumEfc=0, matched=0, labels=[], actSeries=[], estSeries=[];
+  state.measure.forEach(m=>{
+    const flux=parseFloat(m.flux);
+    if(isNaN(flux)||!m.date) return;
+    const f=fieldMap[m.date];
+    let est=null, judge=null, efcBack=null, sfw=null;
+    if(f){
+      const tmin=parseFloat(f.tmin), tmax=parseFloat(f.tmax);
+      if(!isNaN(tmin)&&!isNaN(tmax)){
+        const fT=calcFT(tmin,tmax,q10);
+        sfw = f.judge==='awd'? sfw_awd : 1.0;
+        judge=f.judge;
+        const estHa=dailyEmissionPerHa(efc,sfw,sfo,sfs,fT);     // kgCH4/ha/day
+        est=estHa*KGHA_TO_GM2;                                  // gCH4/m2/day
+        // 逆算EFc：実測フラックス(g/m2)→kg/ha(÷0.1)を、SFw×SFo×SFs×fTで割る
+        const denom=sfw*sfo*sfs*fT;
+        if(denom>0) efcBack=(flux/KGHA_TO_GM2)/denom;
+      }
+    }
+    rows.push({date:m.date, flux, est, judge, efcBack, note:m.note||''});
+    sumAct+=flux;
+    labels.push(m.date); actSeries.push(flux); estSeries.push(est==null?null:est);
+    if(est!=null){ sumEst+=est; matched++; if(efcBack!=null) sumEfc+=efcBack; }
+  });
+  if(!rows.length){ alert('有効な実測値がありません（日付・数値を確認してください）'); return; }
+  measureComputed=rows;
+
+  const actAvg=sumAct/rows.length;
+  const estAvg=matched? sumEst/matched : null;
+  const ratio=(matched&&estAvg>0)? (sumAct/rows.length)/(estAvg) : null; // 注：全体平均比ではなく下で点別平均も可
+  const efcAvg=matched? sumEfc/matched : null;
+
+  document.getElementById('ms-actavg').textContent=fmtG(actAvg);
+  document.getElementById('ms-estavg').textContent=estAvg==null?'—':fmtG(estAvg);
+  document.getElementById('ms-ratio').textContent=ratio==null?'—':ratio.toFixed(2);
+  document.getElementById('ms-efc').textContent=efcAvg==null?'—':efcAvg.toFixed(3);
+  // 実測フラックス平均(gCH4/m2/日) → tCO₂e/ha/年： flux/0.1(=kgCH4/ha/日) × gwp ÷ 1000 × 365 = flux × gwp × 3.65
+  document.getElementById('ms-actco2').textContent=(actAvg*gwp*3.65).toFixed(3);
+  document.getElementById('ms-matched').textContent=`${matched} / ${rows.length}`;
+
+  const hint=document.getElementById('ms-efc-hint');
+  if(efcAvg!=null){
+    hint.style.display='block';
+    const diff=((efcAvg/efc-1)*100);
+    hint.innerHTML=`💡 実測から逆算した現地EFcの平均は <b>${efcAvg.toFixed(3)} kgCH₄/ha/日</b>です（現在の設定EFc=${efc} に対し ${diff>=0?'+':''}${diff.toFixed(0)}%）。`
+      + `モデルを現地に合わせるなら、共通パラメータのEFcをこの値に近づけると推定が実測に整合します。`;
+  } else { hint.style.display='none'; }
+
+  const tb=document.getElementById('ms-tbody'); tb.innerHTML='';
+  rows.forEach(r=>{
+    const judgeTag = r.judge==null? '<span class="muted">③に該当日なし</span>'
+      : (r.judge==='awd'?'<span class="tag tag-awd">AWD</span>':'<span class="tag tag-flood">湛水</span>');
+    const estTxt=r.est==null?'—':fmtG(r.est);
+    const diffTxt=r.est==null?'—':((r.flux-r.est>=0?'+':'')+fmtG(r.flux-r.est));
+    const ratioTxt=(r.est==null||r.est<=0)?'—':(r.flux/r.est).toFixed(2);
+    const efcTxt=r.efcBack==null?'—':r.efcBack.toFixed(3);
+    const tr=document.createElement('tr');
+    if(r.judge==='awd') tr.className='row-awd';
+    tr.innerHTML=`<td>${r.date}</td><td class="td-awd">${fmtG(r.flux)}</td><td class="td-base">${estTxt}</td>
+      <td class="td-diff">${diffTxt}</td><td>${ratioTxt}</td><td style="text-align:center">${judgeTag}</td>
+      <td>${efcTxt}</td><td style="text-align:left">${esc(r.note)}</td>`;
+    tb.appendChild(tr);
+  });
+  document.getElementById('ms-tfoot').innerHTML=`<tr><td>平均</td><td>${fmtG(actAvg)}</td><td>${estAvg==null?'—':fmtG(estAvg)}</td>
+    <td colspan="2">—</td><td style="text-align:center">${matched}点照合</td><td>${efcAvg==null?'—':efcAvg.toFixed(3)}</td><td></td></tr>`;
+
+  document.getElementById('measure-results').style.display='block';
+  // 推定が無い点(null)は線が途切れるため0扱いは避け、欠損として描画
+  drawLines(document.getElementById('ms-chart'), labels,
+    [{label:'実測フラックス', color:'#177245', data:actSeries},
+     {label:'モデル推定', color:'#2b6cb0', data:estSeries}], true);
+}
+function fmtG(v){ return (Math.abs(v)>=1? v.toFixed(2) : v.toFixed(3)); }
+
+function exportMeasureCSV(){
+  if(!measureComputed.length){ alert('先に「推定と比較」を実行してください'); return; }
+  const head=['計測日','実測_gCH4/m2/day','推定_gCH4/m2/day','差(実測-推定)','実測/推定','判定','逆算EFc_kgCH4/ha/day','メモ'];
+  const lines=measureComputed.map(r=>{
+    const ratio=(r.est==null||r.est<=0)?'':(r.flux/r.est).toFixed(3);
+    return [r.date, r.flux, r.est==null?'':r.est.toFixed(4), r.est==null?'':(r.flux-r.est).toFixed(4),
+      ratio, (r.judge==null?'':(r.judge==='awd'?'AWD排水':'湛水')), r.efcBack==null?'':r.efcBack.toFixed(4),
+      (r.note||'').replace(/[,\n]/g,' ')];
+  });
+  const csv=[head,...lines].map(r=>r.join(',')).join('\n');
+  downloadBlob('﻿'+csv, (state.projName||'AWD_FS')+'_measure.csv', 'text/csv;charset=utf-8');
 }
 
 // =====================================================================
@@ -1422,12 +1674,12 @@ function drawBars(canvas,groups,series){
   });
 }
 
-function drawLines(canvas,labels,series){
+function drawLines(canvas,labels,series,allowGaps){
   const {ctx,w,h}=setupCanvas(canvas,310);
   ctx.clearRect(0,0,w,h);
   drawLegend(ctx,w,series);
   const padL=58,padR=16,padT=38,padB=58, plotW=w-padL-padR, plotH=h-padT-padB;
-  let maxV=0; series.forEach(s=>s.data.forEach(v=>{ if(v>maxV)maxV=v; }));
+  let maxV=0; series.forEach(s=>s.data.forEach(v=>{ if(v!=null&&v>maxV)maxV=v; }));
   const top=niceCeil(maxV||1), ticks=5;
   ctx.font='11px sans-serif'; ctx.textBaseline='middle';
   for(let i=0;i<=ticks;i++){
@@ -1443,11 +1695,17 @@ function drawLines(canvas,labels,series){
   for(let i=0;i<n;i+=step){ ctx.fillText(shortLabel(labels[i],10),xAt(i),padT+plotH+8); }
   series.forEach(s=>{
     ctx.strokeStyle=s.color; ctx.lineWidth=2; ctx.beginPath();
-    s.data.forEach((v,i)=>{ const x=xAt(i),y=padT+plotH-(v/top)*plotH; i? ctx.lineTo(x,y):ctx.moveTo(x,y); });
+    let penDown=false;
+    s.data.forEach((v,i)=>{
+      if(v==null){ penDown=false; return; }            // 欠損は線を途切れさせる
+      const x=xAt(i),y=padT+plotH-(v/top)*plotH;
+      if(penDown) ctx.lineTo(x,y); else ctx.moveTo(x,y);
+      penDown=true;
+    });
     ctx.stroke();
     ctx.fillStyle=s.color;
     const pr=n>40?0:2.5;
-    if(pr) s.data.forEach((v,i)=>{ const x=xAt(i),y=padT+plotH-(v/top)*plotH; ctx.beginPath(); ctx.arc(x,y,pr,0,2*Math.PI); ctx.fill(); });
+    if(pr) s.data.forEach((v,i)=>{ if(v==null) return; const x=xAt(i),y=padT+plotH-(v/top)*plotH; ctx.beginPath(); ctx.arc(x,y,pr,0,2*Math.PI); ctx.fill(); });
   });
 }
 
@@ -1492,7 +1750,7 @@ function importJSON(ev){
       state=Object.assign(defaultState(),obj);
       applyStateToInputs();
       // 結果は再計算が必要なので一旦隠す
-      ['baseline-results','reduction-results','field-results'].forEach(id=>{const el=document.getElementById(id); if(el)el.style.display='none';});
+      ['baseline-results','reduction-results','field-results','measure-results'].forEach(id=>{const el=document.getElementById(id); if(el)el.style.display='none';});
       activeScenId=null; renderScenarios();
       saveState();
       alert('読み込みました：'+(state.projName||file.name)+(merged?`\n（シナリオ ${merged} 件も取り込みました）`:''));
@@ -1504,7 +1762,7 @@ function importJSON(ev){
 function resetAll(){
   if(!confirm('現在の入力内容を消去して新規作成します。よろしいですか？\n（保存済みシナリオは消えません。必要なら先に「現在の状態を保存」かJSON保存をしてください）')) return;
   state=defaultState(); applyStateToInputs();
-  ['baseline-results','reduction-results','field-results'].forEach(id=>{const el=document.getElementById(id); if(el)el.style.display='none';});
+  ['baseline-results','reduction-results','field-results','measure-results'].forEach(id=>{const el=document.getElementById(id); if(el)el.style.display='none';});
   activeScenId=null; renderScenarios();
   saveState();
 }
@@ -1565,6 +1823,7 @@ window.addEventListener('resize',()=>{
     if(document.getElementById('baseline-results').style.display==='block') calcBaseline();
     if(document.getElementById('reduction-results').style.display==='block') calcReduction();
     if(document.getElementById('field-results').style.display==='block') calcField();
+    if(document.getElementById('measure-results').style.display==='block') calcMeasure();
   },200);
 });
 </script>
