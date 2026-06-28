@@ -355,16 +355,31 @@
           <!-- GFS targets -->
           <div>
             <h3 class="text-sm font-semibold text-accent uppercase tracking-wider mb-3">GFS 規制ターゲット CI 値 (g-CO₂e/MJ)</h3>
+            <p class="text-[11px] text-slate-400 mb-2">T1 基本目標（低CI・厳しい方）— 超過で $<span id="labelT1rate">100</span>/t 罰金</p>
             <div class="grid grid-cols-2 sm:grid-cols-5 gap-3" id="targetGrid"></div>
-            <p class="text-[11px] text-slate-500 mt-2">アンカー年の間は線形補間されます。</p>
+            <p class="text-[11px] text-slate-400 mt-4 mb-2">T2 直接適合閾値（高CI・緩い方）— 超過で $<span id="labelT2rate">380</span>/t 罰金</p>
+            <div class="grid grid-cols-2 sm:grid-cols-5 gap-3" id="targetGridT2"></div>
+            <p class="text-[11px] text-slate-500 mt-2">アンカー年の間は線形補間。CI > T2 → T2料率、T1 &lt; CI ≤ T2 → T1料率、CI ≤ T1 → $0。</p>
           </div>
 
-          <!-- Penalty rate -->
+          <!-- Penalty rates -->
           <div>
-            <h3 class="text-sm font-semibold text-accent uppercase tracking-wider mb-3">GFS 超過ペナルティ単価</h3>
-            <div class="flex items-center gap-3">
-              <input type="number" id="penaltyRate" class="num-input rounded-lg px-3 py-2 w-40 text-white tabular-nums focus:outline-none" />
-              <span class="text-sm text-slate-400">USD / ton-CO₂e</span>
+            <h3 class="text-sm font-semibold text-accent uppercase tracking-wider mb-3">GFS 超過ペナルティ単価 (USD / t-CO₂e)</h3>
+            <div class="flex flex-wrap items-end gap-5">
+              <div>
+                <label class="block text-[11px] text-slate-400 mb-1">T1 超過 (基本目標違反)</label>
+                <div class="flex items-center gap-2">
+                  <input type="number" id="penaltyT1" class="num-input rounded-lg px-3 py-2 w-28 text-white tabular-nums focus:outline-none" />
+                  <span class="text-sm text-slate-400">USD/t</span>
+                </div>
+              </div>
+              <div>
+                <label class="block text-[11px] text-slate-400 mb-1">T2 超過 (直接適合閾値違反)</label>
+                <div class="flex items-center gap-2">
+                  <input type="number" id="penaltyT2" class="num-input rounded-lg px-3 py-2 w-28 text-white tabular-nums focus:outline-none" />
+                  <span class="text-sm text-slate-400">USD/t</span>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -424,8 +439,12 @@ const DEFAULT_FUELS = [
   { name: 'e-アンモニア',      lhv: 18000, imoWtW: 0.0,  euWtW: 0.0,  euTtW: 0.00,  price: 1300 },
 ];
 
-const DEFAULT_TARGETS = { 2026: 85.0, 2030: 75.0, 2035: 55.0, 2040: 30.0, 2050: 0.0 };
-const DEFAULT_PENALTY_RATE = 150;
+const DEFAULT_TARGETS    = { 2026: 85.0, 2030: 75.0, 2035: 55.0, 2040: 30.0, 2050: 0.0 };
+// GFS 2段階罰金: T2(直接適合閾値)はT1より高い（緩い）方のライン。
+// CI > T2 → $380/t、 T1 < CI ≤ T2 → $100/t、 CI ≤ T1 → $0
+const DEFAULT_TARGETS_T2 = { 2026: 95.0, 2030: 85.0, 2035: 65.0, 2040: 40.0, 2050: 10.0 };
+const DEFAULT_PENALTY_T1 = 100;    // USD/t-CO2e: Tier1超過 (T1 < CI ≤ T2)
+const DEFAULT_PENALTY_T2 = 380;    // USD/t-CO2e: Tier2超過 (CI > T2)
 
 // EU ETS parameters (representative placeholders — editable in settings).
 const DEFAULT_ETS = {
@@ -472,9 +491,11 @@ const MAX_LEGS = 10;
 /* ============================================================
    STATE
 ============================================================ */
-let fuels   = structuredClone(DEFAULT_FUELS);
-let targets = { ...DEFAULT_TARGETS };
-let penaltyRate = DEFAULT_PENALTY_RATE;
+let fuels      = structuredClone(DEFAULT_FUELS);
+let targets    = { ...DEFAULT_TARGETS };
+let targetsT2  = { ...DEFAULT_TARGETS_T2 };
+let penaltyT1  = DEFAULT_PENALTY_T1;
+let penaltyT2  = DEFAULT_PENALTY_T2;
 let ets     = structuredClone(DEFAULT_ETS);
 let fueleu  = structuredClone(DEFAULT_FUELEU);
 let ports   = [...DEFAULT_PORTS];
@@ -634,18 +655,27 @@ function calculate(year = currentYear) {
     }
   });
 
-  const ciAvg  = totalEnergy > 0 ? weightedCi / totalEnergy : 0;
-  const target = interpolateTarget(year);
-  const gap    = ciAvg - target;
-  const compliant = ciAvg <= target;
+  const ciAvg   = totalEnergy > 0 ? weightedCi / totalEnergy : 0;
+  const targetT1 = interpolateTarget(year);                     // 基本目標 (下限・低CI)
+  const targetT2 = interpAnchors(targetsT2, year);              // 直接適合閾値 (上限・高CI)
+  const gapT1    = ciAvg - targetT1;
+  const gapT2    = ciAvg - targetT2;
+  const compliant = gapT1 <= 1e-9;                              // T1 をクリアで適合
+  const E1MJ     = totalEnergy / 1e6;
 
-  // Penalty = (CIavg - Target) * (sumE / 1e6) * Prate  [only if deficit]
-  // sumE in MJ, /1e6 -> excess expressed in ton-CO2e (g * MJ / 1e6 = ton)
-  const excessCO2e = !compliant ? gap * (totalEnergy / 1e6) : 0;
-  const penalty    = !compliant ? excessCO2e * penaltyRate : 0;
+  // 2段階罰金: CI > T2 → $T2_rate × (CI-T2); T1 < CI ≤ T2 → $T1_rate × (CI-T1); CI ≤ T1 → $0
+  let penalty = 0, excessCO2e = 0;
+  if (gapT2 > 1e-9) {
+    excessCO2e = gapT2 * E1MJ;
+    penalty    = excessCO2e * penaltyT2;
+  } else if (gapT1 > 1e-9) {
+    excessCO2e = gapT1 * E1MJ;
+    penalty    = excessCO2e * penaltyT1;
+  }
 
   return {
-    totalEnergy, totalMass, ciAvg, target, gap, compliant, excessCO2e, penalty, fuelCost,
+    totalEnergy, totalMass, ciAvg, target: targetT1, targetT1, targetT2,
+    gap: gapT1, gapT2, compliant, excessCO2e, penalty, fuelCost,
     totalCost: fuelCost + penalty,
     scopeEnergy, scopeMass, scopeCost, scopeLegCount,
   };
@@ -980,7 +1010,6 @@ let sensEnergy = 0;     // total energy demand (MJ), kept constant across the sw
 function buildCiChart() {
   const years = [];
   for (let y = 2026; y <= 2050; y++) years.push(y);
-  const targetSeries = years.map(y => interpolateTarget(y));
 
   const ctx = $('ciChart').getContext('2d');
   ciChart = new Chart(ctx, {
@@ -989,19 +1018,28 @@ function buildCiChart() {
       labels: years,
       datasets: [
         {
-          label: 'GFS ターゲット CI',
-          data: targetSeries,
-          borderColor: '#38bdf8',
-          backgroundColor: 'rgba(56,189,248,0.08)',
+          // ds[0]: T1 base target (lower/strict line)
+          label: 'GFS T1 基本目標 ($100/t)',
+          data: years.map(y => interpolateTarget(y)),
+          borderColor: '#38bdf8', backgroundColor: 'rgba(56,189,248,0.06)',
           fill: true, tension: 0.25, pointRadius: 0, borderWidth: 2.5,
         },
         {
+          // ds[1]: T2 direct-compliance threshold (higher/lenient line)
+          label: 'GFS T2 直接適合閾値 ($380/t)',
+          data: years.map(y => interpAnchors(targetsT2, y)),
+          borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.04)',
+          fill: false, tension: 0.25, pointRadius: 0, borderWidth: 1.5, borderDash: [5, 3],
+        },
+        {
+          // ds[2]: actual CI horizontal line
           label: '実績 WtW CI (現設定)',
           data: years.map(() => 0),
           borderColor: '#f43f5e',
           borderDash: [6, 4], borderWidth: 2.5, pointRadius: 0, fill: false, tension: 0,
         },
         {
+          // ds[3]: year marker
           label: '評価対象年',
           data: [], type: 'scatter',
           borderColor: '#facc15', backgroundColor: '#facc15',
@@ -1048,27 +1086,28 @@ function chartBaseOptions(yTitle) {
 
 function updateCiChart() {
   const years = ciChart.data.labels;
-  // Regime-aware overlay: GFS uses CI vs target; FuelEU uses GHG vs reduced baseline;
-  // ETS has no intensity standard, so we show CI as an informational reference.
-  let actual, targetFn, compliant, label;
+  // Regime-aware: GFS shows two-tier targets; FuelEU shows GHG baseline; ETS shows CI reference.
+  let actual, compliant;
   if (activeRegime === 'fueleu') {
     const f = calcFuelEU(currentYear);
     actual = f.actualGhg; compliant = f.compliant;
-    targetFn = (y) => fueleu.baseline * (1 - interpAnchors(fueleu.reduction, y));
-    label = 'FuelEU 目標GHG強度';
+    ciChart.data.datasets[0].label = 'FuelEU 目標GHG強度';
+    ciChart.data.datasets[0].data = years.map(y => fueleu.baseline * (1 - interpAnchors(fueleu.reduction, y)));
+    ciChart.data.datasets[1].data = years.map(() => null); // hide T2 line for FuelEU
   } else {
     const g = calculate();
     actual = g.ciAvg; compliant = g.compliant;
-    targetFn = (y) => interpolateTarget(y);
-    label = activeRegime === 'ets' ? 'GFS CI（参考）' : 'GFS ターゲット CI';
+    const isRef = activeRegime === 'ets';
+    ciChart.data.datasets[0].label = isRef ? 'GFS T1 CI（参考）' : 'GFS T1 基本目標 ($100/t)';
+    ciChart.data.datasets[0].data = years.map(y => interpolateTarget(y));
+    ciChart.data.datasets[1].label = isRef ? 'GFS T2 CI（参考）' : 'GFS T2 直接適合閾値 ($380/t)';
+    ciChart.data.datasets[1].data = years.map(y => interpAnchors(targetsT2, y));
   }
-  ciChart.data.datasets[0].label = label;
-  ciChart.data.datasets[0].data = years.map(y => targetFn(y));
-  ciChart.data.datasets[1].data = years.map(() => actual);
-  ciChart.data.datasets[2].data = [{ x: currentYear, y: actual }];
+  ciChart.data.datasets[2].data = years.map(() => actual);
+  ciChart.data.datasets[3].data = [{ x: currentYear, y: actual }];
   const col = compliant ? '#34d399' : '#f43f5e';
-  ciChart.data.datasets[2].borderColor = col;
-  ciChart.data.datasets[2].backgroundColor = col;
+  ciChart.data.datasets[3].borderColor = col;
+  ciChart.data.datasets[3].backgroundColor = col;
   ciChart.update('none');
 }
 
@@ -1150,8 +1189,10 @@ function sensPoint(massA, A, B, E, target, fixed) {
 
   // whole-voyage figures
   const totalEnergy = fixed.energy + E;
-  const ciAvg = totalEnergy > 0 ? (fixed.ciWeighted + eA * ciIMO(A) + eB * ciIMO(B)) / totalEnergy : 0;
-  const penalty = Math.max(0, ciAvg - target) * (totalEnergy / 1e6) * penaltyRate;
+  const ciAvg  = totalEnergy > 0 ? (fixed.ciWeighted + eA * ciIMO(A) + eB * ciIMO(B)) / totalEnergy : 0;
+  const t2     = interpAnchors(targetsT2, currentYear);
+  const g1     = ciAvg - target, g2 = ciAvg - t2, E1MJ = totalEnergy / 1e6;
+  const penalty = g2 > 1e-9 ? g2 * E1MJ * penaltyT2 : g1 > 1e-9 ? g1 * E1MJ * penaltyT1 : 0;
   const total = fixed.cost + scopeCost + penalty;     // whole-voyage total cost
   return { massA, massB: mB, ciAvg, scopeCost, fuelCost: fixed.cost + scopeCost, penalty, total };
 }
@@ -1330,22 +1371,25 @@ function renderSettings() {
     });
   });
 
-  // Targets
-  const grid = $('targetGrid');
-  grid.innerHTML = '';
-  Object.keys(targets).sort((a, b) => a - b).forEach(year => {
-    const wrap = document.createElement('div');
-    wrap.innerHTML = `
-      <label class="block text-[11px] text-slate-400 mb-1">${year}年</label>
-      <input data-year="${year}" type="number" step="0.1" value="${targets[year]}" class="num-input rounded-lg px-3 py-2 w-full text-white text-sm tabular-nums focus:outline-none" />`;
-    grid.appendChild(wrap);
-  });
-  grid.querySelectorAll('input').forEach(el => {
-    el.addEventListener('input', (e) => { targets[+e.target.dataset.year] = parseFloat(e.target.value) || 0; });
-  });
+  // Targets T1
+  const renderTargetGrid = (gridId, store, onInput) => {
+    const g = $(gridId); g.innerHTML = '';
+    Object.keys(store).sort((a, b) => a - b).forEach(year => {
+      const w = document.createElement('div');
+      w.innerHTML = `<label class="block text-[11px] text-slate-400 mb-1">${year}年</label>
+        <input data-year="${year}" type="number" step="0.1" value="${store[year]}" class="num-input rounded-lg px-3 py-2 w-full text-white text-sm tabular-nums focus:outline-none" />`;
+      g.appendChild(w);
+    });
+    g.querySelectorAll('input').forEach(el => el.addEventListener('input', (e) => onInput(+e.target.dataset.year, parseFloat(e.target.value) || 0)));
+  };
+  renderTargetGrid('targetGrid',   targets,   (y, v) => { targets[y]   = v; });
+  renderTargetGrid('targetGridT2', targetsT2, (y, v) => { targetsT2[y] = v; });
+  $('labelT1rate').textContent = penaltyT1;
+  $('labelT2rate').textContent = penaltyT2;
 
   renderPorts();
-  $('penaltyRate').value = penaltyRate;
+  $('penaltyT1').value = penaltyT1;
+  $('penaltyT2').value = penaltyT2;
   renderEUSettings();
 }
 
@@ -1412,7 +1456,8 @@ function getState() {
   return {
     fuels: structuredClone(fuels),
     targets: { ...targets },
-    penaltyRate,
+    targetsT2: { ...targetsT2 },
+    penaltyT1, penaltyT2,
     ets: structuredClone(ets),
     fueleu: structuredClone(fueleu),
     ports: [...ports],
@@ -1439,10 +1484,12 @@ function migrateData() {
 // Restore a snapshot and refresh the whole UI.
 function applyState(s) {
   if (!s) return;
-  fuels       = structuredClone(s.fuels ?? DEFAULT_FUELS);
-  targets     = { ...(s.targets ?? DEFAULT_TARGETS) };
-  penaltyRate = s.penaltyRate ?? DEFAULT_PENALTY_RATE;
-  ets         = structuredClone(s.ets ?? DEFAULT_ETS);
+  fuels      = structuredClone(s.fuels ?? DEFAULT_FUELS);
+  targets    = { ...(s.targets ?? DEFAULT_TARGETS) };
+  targetsT2  = { ...(s.targetsT2 ?? DEFAULT_TARGETS_T2) };
+  penaltyT1  = s.penaltyT1 ?? (s.penaltyRate ?? DEFAULT_PENALTY_T1);  // migrate old single-rate saves
+  penaltyT2  = s.penaltyT2 ?? DEFAULT_PENALTY_T2;
+  ets        = structuredClone(s.ets ?? DEFAULT_ETS);
   fueleu      = structuredClone(s.fueleu ?? DEFAULT_FUELEU);
   ports       = [...(s.ports ?? DEFAULT_PORTS)];
   legs        = structuredClone(s.legs ?? DEFAULT_LEGS);
@@ -1653,7 +1700,8 @@ function init() {
   $('resetSample').addEventListener('click', () => {
     if (!confirm('現在の入力を破棄して初期サンプルに戻しますか？')) return;
     applyState({
-      fuels: DEFAULT_FUELS, targets: DEFAULT_TARGETS, penaltyRate: DEFAULT_PENALTY_RATE,
+      fuels: DEFAULT_FUELS, targets: DEFAULT_TARGETS, targetsT2: DEFAULT_TARGETS_T2,
+      penaltyT1: DEFAULT_PENALTY_T1, penaltyT2: DEFAULT_PENALTY_T2,
       ets: DEFAULT_ETS, fueleu: DEFAULT_FUELEU,
       ports: DEFAULT_PORTS, legs: DEFAULT_LEGS, currentYear: 2030, activeRegime: 'gfs',
       sensFuelA: null, sensFuelB: null, sensEnergy: null,
@@ -1686,7 +1734,8 @@ function init() {
   $('addPort').addEventListener('click', addPortFn);
   $('newPortName').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addPortFn(); } });
 
-  $('penaltyRate').addEventListener('input', (e) => { penaltyRate = parseFloat(e.target.value) || 0; });
+  $('penaltyT1').addEventListener('input', (e) => { penaltyT1 = parseFloat(e.target.value) || 0; $('labelT1rate').textContent = penaltyT1; });
+  $('penaltyT2').addEventListener('input', (e) => { penaltyT2 = parseFloat(e.target.value) || 0; $('labelT2rate').textContent = penaltyT2; });
 
   // EU ETS / FuelEU scalar params
   $('etsEua').addEventListener('input', (e) => { ets.euaPrice = parseFloat(e.target.value) || 0; });
@@ -1706,12 +1755,14 @@ function init() {
   });
 
   $('resetDefaults').addEventListener('click', () => {
-    fuels = structuredClone(DEFAULT_FUELS);
-    targets = { ...DEFAULT_TARGETS };
-    penaltyRate = DEFAULT_PENALTY_RATE;
-    ets = structuredClone(DEFAULT_ETS);
-    fueleu = structuredClone(DEFAULT_FUELEU);
-    ports = [...DEFAULT_PORTS];
+    fuels     = structuredClone(DEFAULT_FUELS);
+    targets   = { ...DEFAULT_TARGETS };
+    targetsT2 = { ...DEFAULT_TARGETS_T2 };
+    penaltyT1 = DEFAULT_PENALTY_T1;
+    penaltyT2 = DEFAULT_PENALTY_T2;
+    ets       = structuredClone(DEFAULT_ETS);
+    fueleu    = structuredClone(DEFAULT_FUELEU);
+    ports     = [...DEFAULT_PORTS];
     renderSettings();
   });
 }
