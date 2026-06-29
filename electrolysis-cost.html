@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>水電解 水素製造コスト試算ツール | LCOH Calculator</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          navy: { 900: '#0b1120', 850: '#111827', 800: '#1a2336', 700: '#243049', 600: '#2f3e5c' },
+          accent: { DEFAULT: '#38bdf8', cyan: '#22d3ee', teal: '#2dd4bf' },
+        },
+        fontFamily: { sans: ['Inter', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', 'sans-serif'] },
+      },
+    },
+  };
+</script>
+<style>
+  body { background: radial-gradient(1200px 600px at 80% -10%, #16213e 0%, #0b1120 55%, #070b15 100%); }
+  ::-webkit-scrollbar { width: 9px; height: 9px; }
+  ::-webkit-scrollbar-track { background: #0b1120; }
+  ::-webkit-scrollbar-thumb { background: #2f3e5c; border-radius: 6px; }
+  ::-webkit-scrollbar-thumb:hover { background: #38bdf8; }
+  input[type="range"] { -webkit-appearance: none; appearance: none; height: 6px; border-radius: 999px; background: #243049; outline: none; }
+  input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 18px; height: 18px; border-radius: 50%; background: #38bdf8; cursor: pointer; box-shadow: 0 0 0 4px rgba(56,189,248,0.2); }
+  input[type="range"]::-moz-range-thumb { width: 18px; height: 18px; border: none; border-radius: 50%; background: #38bdf8; cursor: pointer; box-shadow: 0 0 0 4px rgba(56,189,248,0.2); }
+  .glass { background: rgba(26, 35, 54, 0.72); backdrop-filter: blur(10px); border: 1px solid rgba(148, 163, 184, 0.10); }
+  .fade-in { animation: fadeIn 0.4s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .num-input { background: #0b1120; border: 1px solid #2f3e5c; }
+  .num-input:focus { border-color: #38bdf8; box-shadow: 0 0 0 3px rgba(56,189,248,0.18); }
+  .tab { color: #94a3b8; }
+  .tab:hover { color: #e2e8f0; background: rgba(255,255,255,0.04); }
+  .tab.active { color: #0b1120; background: #38bdf8; box-shadow: 0 2px 10px rgba(56,189,248,0.25); }
+  details > summary { list-style: none; cursor: pointer; }
+  details > summary::-webkit-details-marker { display: none; }
+</style>
+</head>
+<body class="min-h-screen text-slate-200 font-sans antialiased">
+
+  <!-- ===================== HEADER ===================== -->
+  <header class="border-b border-white/10 bg-navy-900/60 backdrop-blur sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-5 py-4 flex items-center justify-between gap-4 flex-wrap">
+      <div class="flex items-center gap-3">
+        <div class="h-10 w-10 rounded-xl bg-gradient-to-br from-accent to-teal-400 flex items-center justify-center shadow-lg shadow-cyan-500/20">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-navy-900" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        </div>
+        <div>
+          <h1 class="text-lg font-semibold text-white leading-tight">水電解 水素製造コスト試算ツール</h1>
+          <p class="text-[11px] text-slate-400">LCOH Calculator — CAPEX / OPEX / 稼働プロファイルから ㎥単価を積み上げ試算</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2 flex-wrap">
+        <div class="flex items-center gap-1 bg-navy-800 rounded-lg p-1" id="unitTabs">
+          <button data-unit="¥/Nm³" class="tab active px-3 py-1.5 rounded-md text-xs font-medium transition">円/Nm³</button>
+          <button data-unit="¥/kg" class="tab px-3 py-1.5 rounded-md text-xs font-medium transition">円/kg</button>
+          <button data-unit="$/kg" class="tab px-3 py-1.5 rounded-md text-xs font-medium transition">$/kg</button>
+        </div>
+        <select id="scenarioList" class="num-input rounded-lg px-3 py-2 text-sm text-white w-44 focus:outline-none"><option value="">— 保存シナリオ —</option></select>
+        <button id="btnSave" class="text-xs px-3 py-2 rounded-lg bg-navy-700 hover:bg-navy-600 text-slate-200 transition">保存</button>
+        <button id="btnDelete" class="text-xs px-3 py-2 rounded-lg bg-navy-700 hover:bg-navy-600 text-slate-200 transition">削除</button>
+        <button id="btnExport" class="text-xs px-3 py-2 rounded-lg bg-navy-700 hover:bg-navy-600 text-slate-200 transition">JSON出力</button>
+        <button id="btnImport" class="text-xs px-3 py-2 rounded-lg bg-navy-700 hover:bg-navy-600 text-slate-200 transition">JSON読込</button>
+        <input type="file" id="fileImport" accept="application/json" class="hidden" />
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-5 py-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+    <!-- ===================== INPUT PANEL ===================== -->
+    <section class="lg:col-span-5 xl:col-span-4 space-y-4">
+      <!-- Technology presets -->
+      <div class="glass rounded-2xl p-4 fade-in">
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="text-sm font-semibold text-white">方式プリセット</h2>
+          <span class="text-[10px] text-slate-500">選択で代表値を自動セット</span>
+        </div>
+        <div class="grid grid-cols-4 gap-2" id="presetBtns">
+          <button data-preset="アルカリ" class="tab px-2 py-2 rounded-lg text-xs font-medium transition">アルカリ</button>
+          <button data-preset="PEM" class="tab active px-2 py-2 rounded-lg text-xs font-medium transition">PEM</button>
+          <button data-preset="SOEC" class="tab px-2 py-2 rounded-lg text-xs font-medium transition">SOEC</button>
+          <button data-preset="AEM" class="tab px-2 py-2 rounded-lg text-xs font-medium transition">AEM</button>
+        </div>
+      </div>
+
+      <!-- Dynamically rendered input groups -->
+      <div id="inputGroups" class="space-y-4"></div>
+
+      <!-- Optional: compression / dispatch -->
+      <div class="glass rounded-2xl p-4 fade-in">
+        <label class="flex items-center gap-2 cursor-pointer select-none">
+          <input type="checkbox" id="inclCompr" class="w-4 h-4 accent-sky-400" />
+          <span class="text-sm font-semibold text-white">圧縮・出荷を含める（任意）</span>
+        </label>
+        <div id="comprGroup" class="mt-3 hidden"></div>
+      </div>
+
+      <button id="btnReset" class="w-full text-xs px-3 py-2.5 rounded-lg bg-navy-800 hover:bg-navy-700 border border-white/10 text-slate-300 transition">初期値に戻す</button>
+    </section>
+
+    <!-- ===================== RESULTS ===================== -->
+    <section class="lg:col-span-7 xl:col-span-8 space-y-4">
+
+      <!-- KPI row -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div class="glass rounded-2xl p-4 fade-in col-span-2 md:col-span-2">
+          <div class="text-[11px] text-slate-400">水素製造コスト (LCOH)</div>
+          <div class="flex items-end gap-2 mt-1">
+            <span id="kpiMain" class="text-4xl font-bold text-white tabular-nums">—</span>
+            <span id="kpiMainUnit" class="text-sm text-accent mb-1">円/Nm³</span>
+          </div>
+          <div id="kpiSub" class="text-[11px] text-slate-400 mt-1 tabular-nums">—</div>
+        </div>
+        <div class="glass rounded-2xl p-4 fade-in">
+          <div class="text-[11px] text-slate-400">年間生産量</div>
+          <div id="kpiH2" class="text-xl font-semibold text-white tabular-nums mt-1">—</div>
+          <div id="kpiH2sub" class="text-[10px] text-slate-500 tabular-nums">—</div>
+        </div>
+        <div class="glass rounded-2xl p-4 fade-in">
+          <div class="text-[11px] text-slate-400">電力費シェア</div>
+          <div id="kpiElec" class="text-xl font-semibold text-accent-cyan tabular-nums mt-1">—</div>
+          <div id="kpiTarget" class="text-[10px] mt-0.5">—</div>
+        </div>
+      </div>
+
+      <!-- Stacked breakdown chart -->
+      <div class="glass rounded-2xl p-4 fade-in">
+        <div class="flex items-center justify-between mb-2 flex-wrap gap-2">
+          <h2 class="text-sm font-semibold text-white">コスト内訳（積み上げ）</h2>
+          <div class="flex items-center gap-2">
+            <button id="btnSnap" class="text-[11px] px-2.5 py-1.5 rounded-lg bg-navy-700 hover:bg-navy-600 text-slate-200 transition">＋ 比較に追加</button>
+            <button id="btnClearSnap" class="text-[11px] px-2.5 py-1.5 rounded-lg bg-navy-800 hover:bg-navy-700 text-slate-400 transition">比較クリア</button>
+          </div>
+        </div>
+        <div class="h-72"><canvas id="stackChart"></canvas></div>
+        <p class="text-[10px] text-slate-500 mt-2">破線は日本の供給コスト目標（2030: 30円/Nm³ ・ 2050: 20円/Nm³）。負の項目（補助金・副生酸素）はコストを押し下げます。</p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <!-- Share doughnut -->
+        <div class="glass rounded-2xl p-4 fade-in">
+          <h2 class="text-sm font-semibold text-white mb-2">構成比</h2>
+          <div class="h-60"><canvas id="shareChart"></canvas></div>
+        </div>
+        <!-- Sensitivity -->
+        <div class="glass rounded-2xl p-4 fade-in">
+          <div class="flex items-center justify-between mb-2">
+            <h2 class="text-sm font-semibold text-white">感度分析</h2>
+            <select id="sensVar" class="num-input rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none">
+              <option value="cf">設備利用率</option>
+              <option value="elecPrice">電力単価</option>
+              <option value="capexPerKW">CAPEX単価</option>
+              <option value="wacc">割引率</option>
+            </select>
+          </div>
+          <div class="h-60"><canvas id="sensChart"></canvas></div>
+        </div>
+      </div>
+
+      <!-- Breakdown table -->
+      <div class="glass rounded-2xl p-4 fade-in">
+        <h2 class="text-sm font-semibold text-white mb-2">内訳テーブル</h2>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="text-[11px] text-slate-400 border-b border-white/10">
+                <th class="text-left py-2 pr-3">項目</th>
+                <th class="text-right py-2 px-3">円/Nm³</th>
+                <th class="text-right py-2 px-3">円/kg</th>
+                <th class="text-right py-2 px-3">$/kg</th>
+                <th class="text-right py-2 pl-3">構成比</th>
+              </tr>
+            </thead>
+            <tbody id="breakdownBody" class="tabular-nums"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Methodology -->
+      <details class="glass rounded-2xl p-4 fade-in">
+        <summary class="text-sm font-semibold text-white flex items-center justify-between">
+          <span>算定式・前提・出典</span>
+          <span class="text-[10px] text-slate-500">クリックで展開</span>
+        </summary>
+        <div class="mt-3 text-[12px] text-slate-300 space-y-3 leading-relaxed">
+          <div>
+            <p class="font-medium text-slate-200">算定式（年経費法 / 資本回収係数 CRF）</p>
+            <pre class="text-[11px] bg-navy-900 rounded-lg p-3 mt-1 overflow-x-auto text-slate-300">LCOH[円/kg] = ( CAPEX×CRF + 固定O&M + スタック交換費(年換算) ) ÷ 年間H2生産量
+             + 電力単価×電力原単位 + 水費 ( − 補助金 − 副生酸素 )
+
+CRF = r(1+r)^N / ((1+r)^N − 1)      r=割引率(WACC), N=設備寿命
+年間H2[kg] = 定格電力[kW] × 年間稼働時間[h] ÷ 電力原単位[kWh/kg]
+年間稼働時間 = 設備利用率 × 8,760h
+スタック交換費 = Σ 各交換のNPV × CRF（寿命内で稼働時間に応じ周期交換）
+円/Nm³ = 円/kg ÷ 11.13       （1kg-H2 ≒ 11.13 Nm³, 0℃/1atm, 密度0.0899kg/Nm³）</pre>
+          </div>
+          <div>
+            <p class="font-medium text-slate-200">代表値の目安（プリセットの根拠）</p>
+            <ul class="list-disc list-inside text-[11px] text-slate-400 space-y-0.5 mt-1">
+              <li>電力費が LCOH の <b>60〜75%</b> を占めるのが一般的。稼働 5,000h/年未満では CAPEX 比率が 35% 超に。</li>
+              <li>電力原単位：アルカリ ≈4.8 / PEM ≈5.0 / SOEC ≈3.8 kWh/Nm³（= 53 / 55 / 42 kWh/kg）。</li>
+              <li>システムCAPEX：アルカリ $800–1,400・PEM $1,000–2,000/kW。固定O&M は CAPEX の 1.5〜5%/年。</li>
+              <li>スタック寿命：60,000〜90,000h（SOEC は短め）。CAPEX の 19〜60% を占める。</li>
+              <li>日本の供給コスト目標：2030年 30円/Nm³、2050年 20円/Nm³（現状 ≈100円/Nm³）。</li>
+            </ul>
+          </div>
+          <div>
+            <p class="font-medium text-slate-200">主な出典</p>
+            <ul class="list-disc list-inside text-[11px] text-slate-400 space-y-0.5 mt-1">
+              <li>European Hydrogen Observatory — Levelised Cost of Hydrogen Calculator &amp; Manual (2024)</li>
+              <li>IEA — Levelised Cost of Hydrogen Maps / DOE Hydrogen Program Record #24005 (PEM, 2024)</li>
+              <li>Lazard — Levelized Cost of Hydrogen Analysis</li>
+              <li>経済産業省・NEDO 水素・燃料電池戦略ロードマップ（供給コスト目標）</li>
+            </ul>
+          </div>
+          <p class="text-[10px] text-slate-500">※ 本ツールは概算用です。実プロジェクトの投資判断には FEED 等の詳細評価をご利用ください。</p>
+        </div>
+      </details>
+
+    </section>
+  </main>
+
+  <footer class="max-w-7xl mx-auto px-5 py-6 text-[11px] text-slate-500">
+    水電解 水素製造コスト試算ツール · 年経費法（CRF）ベース · すべての計算はブラウザ内で完結します
+  </footer>
+
+<script>
+/* ============================================================
+   水電解 水素製造コスト試算ツール (LCOH Calculator)
+   - 年経費法（資本回収係数 CRF）で 円/Nm³ を積み上げ試算
+   - すべてクライアントサイド計算
+============================================================ */
+const $ = (id) => document.getElementById(id);
+const NM3_PER_KG = 11.13;   // 1kg-H2 ≒ 11.13 Nm³ (0℃, 1atm, 0.0899 kg/Nm³)
+const HHV_KWH_KG = 39.4;    // 高位発熱量 (141.8 MJ/kg)
+
+/* ---------- 既定値・プリセット ---------- */
+const DEFAULTS = {
+  unit: '¥/Nm³', sensVar: 'cf', preset: 'PEM', inclCompr: false,
+  capacityKW: 1000,
+  capexPerKW: 165000, installFactor: 20, stackShare: 45,
+  cf: 46, lifetime: 20, degradation: 0,
+  elecPrice: 15, secNm3: 5.0,
+  omPct: 3.5, waterUse: 1.4, waterPrice: 300,
+  stackLifeH: 70000,
+  wacc: 7, fx: 150,
+  subsidy: 0, o2Credit: 0,
+  comprCapex: 50000000, comprSEC: 3.0,
+};
+const PRESETS = {
+  'アルカリ': { capexPerKW: 130000, secNm3: 4.8, stackShare: 35, stackLifeH: 80000, omPct: 3.0 },
+  'PEM':      { capexPerKW: 165000, secNm3: 5.0, stackShare: 45, stackLifeH: 70000, omPct: 3.5 },
+  'SOEC':     { capexPerKW: 330000, secNm3: 3.8, stackShare: 50, stackLifeH: 40000, omPct: 4.0 },
+  'AEM':      { capexPerKW: 140000, secNm3: 4.8, stackShare: 40, stackLifeH: 30000, omPct: 3.0 },
+};
+
+/* ---------- 入力フィールド定義（グループごと） ---------- */
+const GROUPS = [
+  { title: '① 装置・規模', fields: [
+    { key: 'capacityKW', label: '定格電力', unit: 'kW', min: 10, max: 100000, step: 10, slider: false },
+  ]},
+  { title: '② CAPEX（設備費）', fields: [
+    { key: 'capexPerKW', label: 'システムCAPEX単価', unit: '円/kW', min: 20000, max: 500000, step: 1000, slider: true },
+    { key: 'installFactor', label: '据付・建設係数', unit: '%', min: 0, max: 100, step: 1, slider: true },
+    { key: 'stackShare', label: 'スタック比率（対システム）', unit: '%', min: 10, max: 70, step: 1, slider: true },
+  ]},
+  { title: '③ 稼働プロファイル', fields: [
+    { key: 'cf', label: '設備利用率（稼働率）', unit: '%', min: 5, max: 95, step: 1, slider: true },
+    { key: 'lifetime', label: '設備寿命', unit: '年', min: 5, max: 30, step: 1, slider: true },
+    { key: 'degradation', label: '劣化率（電力原単位の上昇）', unit: '%/年', min: 0, max: 3, step: 0.1, slider: true },
+  ]},
+  { title: '④ 電力', fields: [
+    { key: 'elecPrice', label: '電力単価', unit: '円/kWh', min: 1, max: 40, step: 0.5, slider: true },
+    { key: 'secNm3', label: '電力原単位（SEC）', unit: 'kWh/Nm³', min: 3, max: 7, step: 0.1, slider: true },
+  ]},
+  { title: '⑤ O&M・水', fields: [
+    { key: 'omPct', label: '固定O&M（対CAPEX）', unit: '%/年', min: 0, max: 8, step: 0.1, slider: true },
+    { key: 'waterUse', label: '水消費', unit: 'L/Nm³', min: 0, max: 5, step: 0.1, slider: true },
+    { key: 'waterPrice', label: '水単価', unit: '円/m³', min: 0, max: 2000, step: 10, slider: false },
+  ]},
+  { title: '⑥ スタック', fields: [
+    { key: 'stackLifeH', label: 'スタック寿命', unit: '時間(h)', min: 10000, max: 120000, step: 1000, slider: true },
+  ]},
+  { title: '⑦ 財務', fields: [
+    { key: 'wacc', label: '割引率（WACC）', unit: '%', min: 0, max: 15, step: 0.1, slider: true },
+    { key: 'fx', label: '為替', unit: '円/$', min: 80, max: 250, step: 1, slider: false },
+  ]},
+  { title: '⑧ 補助金・副生酸素（任意）', fields: [
+    { key: 'subsidy', label: '補助金', unit: '円/Nm³', min: 0, max: 100, step: 1, slider: true },
+    { key: 'o2Credit', label: '副生酸素 販売益', unit: '円/Nm³', min: 0, max: 50, step: 0.5, slider: true },
+  ]},
+];
+const COMPR_FIELDS = [
+  { key: 'comprCapex', label: '圧縮機等 CAPEX（総額）', unit: '円', min: 0, max: 2000000000, step: 1000000, slider: false },
+  { key: 'comprSEC', label: '圧縮 電力原単位', unit: 'kWh/kg', min: 0, max: 10, step: 0.1, slider: true },
+];
+
+/* ---------- コスト構成要素の定義 ---------- */
+const COMPONENTS = [
+  { key: 'capex', label: '設備費 (CAPEX)', color: '#38bdf8' },
+  { key: 'stack', label: 'スタック交換', color: '#818cf8' },
+  { key: 'om',    label: '固定O&M',      color: '#2dd4bf' },
+  { key: 'elec',  label: '電力費',        color: '#fbbf24' },
+  { key: 'water', label: '水費',          color: '#22d3ee' },
+  { key: 'compr', label: '圧縮・出荷',    color: '#a78bfa' },
+  { key: 'subsidy', label: '補助金',       color: '#34d399' },
+  { key: 'o2',    label: '副生酸素',      color: '#4ade80' },
+];
+
+let S = { ...DEFAULTS };
+let snapshots = [];   // 比較用スナップショット {name, perKg}
+let stackChart, shareChart, sensChart;
+
+/* ============================================================
+   計算コア（純関数）— 状態 s から各コスト要素を円/kgで返す
+============================================================ */
+function compute(s) {
+  const r = s.wacc / 100, N = s.lifetime;
+  const CRF = r <= 0 ? 1 / N : (r * Math.pow(1 + r, N)) / (Math.pow(1 + r, N) - 1);
+  const hours = (s.cf / 100) * 8760;
+  const secKg = s.secNm3 * NM3_PER_KG;
+  const degF = 1 + (s.degradation / 100) * (N / 2);   // 中央年での平均的な原単位上昇
+  const secEff = secKg * degF;
+  const annualH2kg = hours > 0 ? (s.capacityKW * hours) / secEff : 0;
+
+  const capexSystem = s.capacityKW * s.capexPerKW;
+  const elxCapex = capexSystem * (1 + s.installFactor / 100);
+  const annualCapex = elxCapex * CRF;
+  const fixedOM = elxCapex * (s.omPct / 100);
+
+  // スタック交換：寿命内で周期的に交換、各交換費を割引いて年経費化
+  const stackCost = capexSystem * (s.stackShare / 100);
+  let pvRepl = 0;
+  if (hours > 0 && s.stackLifeH > 0) {
+    const yearsPerStack = s.stackLifeH / hours;
+    for (let k = 1; ; k++) {
+      const yr = k * yearsPerStack;
+      if (yr >= N) break;
+      pvRepl += stackCost / Math.pow(1 + r, yr);
+    }
+  }
+  const annualStack = pvRepl * CRF;
+
+  // 圧縮・出荷（任意）：CAPEX＋O&M＋圧縮電力をまとめて1要素に
+  let comprPerKg = 0;
+  if (s.inclCompr) {
+    const cAnnual = s.comprCapex * CRF + s.comprCapex * (s.omPct / 100);
+    comprPerKg = (annualH2kg ? cAnnual / annualH2kg : 0) + s.elecPrice * s.comprSEC;
+  }
+
+  const p = {};
+  p.capex = annualH2kg ? annualCapex / annualH2kg : 0;
+  p.stack = annualH2kg ? annualStack / annualH2kg : 0;
+  p.om    = annualH2kg ? fixedOM / annualH2kg : 0;
+  p.elec  = s.elecPrice * secEff;
+  p.water = (s.waterUse * s.waterPrice / 1000) * NM3_PER_KG;   // 円/kg
+  p.compr = comprPerKg;
+  p.subsidy = -(s.subsidy * NM3_PER_KG);
+  p.o2    = -(s.o2Credit * NM3_PER_KG);
+
+  const totalPerKg = Object.values(p).reduce((a, b) => a + b, 0);
+  const grossPos = COMPONENTS.reduce((a, c) => a + Math.max(0, p[c.key] || 0), 0);
+  const capexAll = elxCapex + (s.inclCompr ? s.comprCapex : 0);
+  return { p, totalPerKg, grossPos, annualH2kg, hours, CRF, capexAll, secEff };
+}
+
+/* ---------- 単位換算（円/kg → 表示単位） ---------- */
+function toUnit(perKg) {
+  if (S.unit === '¥/Nm³') return perKg / NM3_PER_KG;
+  if (S.unit === '¥/kg') return perKg;
+  return perKg / S.fx;          // $/kg
+}
+function unitDecimals() { return S.unit === '$/kg' ? 2 : (S.unit === '¥/kg' ? 0 : 1); }
+function fmt(v, d = 0) { return (isFinite(v) ? v : 0).toLocaleString('ja-JP', { minimumFractionDigits: d, maximumFractionDigits: d }); }
+
+/* ============================================================
+   入力UIの描画
+============================================================ */
+function fieldHTML(f) {
+  const v = S[f.key];
+  const num = `<input data-key="${f.key}" type="number" min="${f.min}" max="${f.max}" step="${f.step}" value="${v}"
+      class="fnum num-input rounded-md px-2 py-1.5 w-28 text-white text-sm tabular-nums text-right focus:outline-none" />`;
+  const rng = f.slider
+    ? `<input data-key="${f.key}" type="range" min="${f.min}" max="${f.max}" step="${f.step}" value="${v}" class="frng w-full mt-1.5" />`
+    : '';
+  return `<div data-field="${f.key}" class="mb-3 last:mb-0">
+      <div class="flex items-center justify-between gap-2">
+        <label class="text-[12px] text-slate-300">${f.label}</label>
+        <div class="flex items-center gap-1 shrink-0">${num}<span class="text-[10px] text-slate-500 w-14 text-left">${f.unit}</span></div>
+      </div>
+      ${rng}
+      <div class="help text-[10px] text-slate-500 mt-0.5 min-h-[12px]" id="help-${f.key}"></div>
+    </div>`;
+}
+function groupHTML(g) {
+  return `<div class="glass rounded-2xl p-4 fade-in">
+      <h2 class="text-sm font-semibold text-white mb-3">${g.title}</h2>
+      ${g.fields.map(fieldHTML).join('')}
+    </div>`;
+}
+function renderInputs() {
+  $('inputGroups').innerHTML = GROUPS.map(groupHTML).join('');
+  $('comprGroup').innerHTML = COMPR_FIELDS.map(fieldHTML).join('');
+}
+
+/* ---------- 動的ヘルプ（換算値の表示） ---------- */
+function updateHelps() {
+  const set = (k, t) => { const el = $('help-' + k); if (el) el.textContent = t; };
+  set('capexPerKW', `≈ $${fmt(S.capexPerKW / S.fx)}/kW`);
+  set('cf', `= ${fmt((S.cf / 100) * 8760)} 時間/年`);
+  set('secNm3', `≈ ${(S.secNm3 * NM3_PER_KG).toFixed(1)} kWh/kg ・ 効率(HHV) ${(HHV_KWH_KG / (S.secNm3 * NM3_PER_KG) * 100).toFixed(0)}%`);
+  set('elecPrice', `≈ $${(S.elecPrice / S.fx).toFixed(3)}/kWh`);
+  const hours = (S.cf / 100) * 8760;
+  set('stackLifeH', hours > 0 ? `≈ ${(S.stackLifeH / hours).toFixed(1)} 年ごとに交換` : '');
+  set('capacityKW', `= ${fmt(S.capacityKW / 1000, 2)} MW`);
+}
+
+/* ============================================================
+   チャート初期化
+============================================================ */
+function baseOpts(yTitle) {
+  return {
+    responsive: true, maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: { labels: { color: '#cbd5e1', font: { size: 11 }, usePointStyle: true, padding: 12, boxWidth: 8 } },
+      tooltip: { backgroundColor: '#0b1120', borderColor: '#2f3e5c', borderWidth: 1, titleColor: '#fff', bodyColor: '#cbd5e1', padding: 10 },
+    },
+    scales: {
+      x: { grid: { color: 'rgba(148,163,184,0.06)' }, ticks: { color: '#94a3b8', font: { size: 11 } }, stacked: false },
+      y: { grid: { color: 'rgba(148,163,184,0.06)' }, ticks: { color: '#94a3b8', font: { size: 11 } }, title: { display: true, text: yTitle, color: '#64748b', font: { size: 11 } } },
+    },
+  };
+}
+
+// 目標ラインを描く軽量プラグイン
+const refLinePlugin = {
+  id: 'refLines',
+  afterDatasetsDraw(chart) {
+    const opts = chart.config.options.plugins.refLines;
+    if (!opts || !opts.lines) return;
+    const { ctx, chartArea: { left, right }, scales: { y } } = chart;
+    opts.lines.forEach(l => {
+      const yy = y.getPixelForValue(l.value);
+      if (yy < chart.chartArea.top || yy > chart.chartArea.bottom) return;
+      ctx.save();
+      ctx.strokeStyle = l.color; ctx.lineWidth = 1.4; ctx.setLineDash([6, 4]);
+      ctx.beginPath(); ctx.moveTo(left, yy); ctx.lineTo(right, yy); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = l.color; ctx.font = '11px Inter, sans-serif'; ctx.textAlign = 'right';
+      ctx.fillText(l.label, right - 6, yy - 4);
+      ctx.restore();
+    });
+  },
+};
+Chart.register(refLinePlugin);
+
+function targetLines() {
+  const conv = (perNm3) => S.unit === '¥/Nm³' ? perNm3 : S.unit === '¥/kg' ? perNm3 * NM3_PER_KG : perNm3 * NM3_PER_KG / S.fx;
+  return [
+    { value: conv(30), label: '2030目標 30円/Nm³', color: '#fbbf24' },
+    { value: conv(20), label: '2050目標 20円/Nm³', color: '#34d399' },
+  ];
+}
+
+function initCharts() {
+  const so = baseOpts('LCOH (円/Nm³)');
+  so.scales.x.stacked = true; so.scales.y.stacked = true; so.scales.y.beginAtZero = true;
+  so.plugins.refLines = { lines: [] };
+  so.plugins.tooltip.callbacks = {
+    label: (c) => `${c.dataset.label}: ${fmt(c.parsed.y, unitDecimals())} ${S.unit}`,
+    footer: (items) => '合計: ' + fmt(items.reduce((a, i) => a + i.parsed.y, 0), unitDecimals()) + ' ' + S.unit,
+  };
+  stackChart = new Chart($('stackChart'), { type: 'bar', data: { labels: [], datasets: [] }, options: so });
+
+  shareChart = new Chart($('shareChart'), {
+    type: 'doughnut',
+    data: { labels: [], datasets: [{ data: [], backgroundColor: [], borderColor: '#0b1120', borderWidth: 2 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false, cutout: '58%',
+      plugins: {
+        legend: { position: 'right', labels: { color: '#cbd5e1', font: { size: 10 }, usePointStyle: true, padding: 8, boxWidth: 8 } },
+        tooltip: { backgroundColor: '#0b1120', borderColor: '#2f3e5c', borderWidth: 1, titleColor: '#fff', bodyColor: '#cbd5e1', padding: 10,
+          callbacks: { label: (c) => `${c.label}: ${fmt(c.parsed, unitDecimals())} ${S.unit}` } },
+      },
+    },
+  });
+
+  const seo = baseOpts('LCOH (円/Nm³)');
+  seo.plugins.legend.display = false;
+  sensChart = new Chart($('sensChart'), {
+    type: 'line',
+    data: { labels: [], datasets: [
+      { label: 'LCOH', data: [], borderColor: '#38bdf8', backgroundColor: 'rgba(56,189,248,0.12)', fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2 },
+      { label: '現在', data: [], borderColor: '#fbbf24', backgroundColor: '#fbbf24', pointRadius: 5, pointHoverRadius: 6, showLine: false, type: 'scatter' },
+    ] },
+    options: seo,
+  });
+}
+
+/* ============================================================
+   描画更新
+============================================================ */
+function renderAll() {
+  updateHelps();
+  const cur = compute(S);
+  const d = unitDecimals();
+
+  // KPI
+  $('kpiMain').textContent = fmt(toUnit(cur.totalPerKg), d);
+  $('kpiMainUnit').textContent = S.unit;
+  $('kpiSub').textContent = `${fmt(cur.totalPerKg / NM3_PER_KG, 1)} 円/Nm³ ・ ${fmt(cur.totalPerKg, 0)} 円/kg ・ $${(cur.totalPerKg / S.fx).toFixed(2)}/kg`;
+  $('kpiH2').textContent = fmt(cur.annualH2kg * NM3_PER_KG / 10000, 1) + ' 万Nm³';
+  $('kpiH2sub').textContent = `${fmt(cur.annualH2kg / 1000, 1)} t/年 ・ ${fmt(cur.annualH2kg, 0)} kg/年`;
+  const elecShare = cur.grossPos > 0 ? (Math.max(0, cur.p.elec) / cur.grossPos * 100) : 0;
+  $('kpiElec').textContent = elecShare.toFixed(0) + '%';
+
+  // 目標との比較
+  const lcohNm3 = cur.totalPerKg / NM3_PER_KG;
+  const diff30 = lcohNm3 - 30;
+  $('kpiTarget').innerHTML = diff30 <= 0
+    ? `<span class="text-emerald-400">2030目標 達成</span>`
+    : `<span class="text-slate-400">2030目標まで <b class="text-amber-400">+${fmt(diff30, 0)}</b> 円/Nm³</span>`;
+
+  renderStackChart(cur);
+  renderShareChart(cur);
+  renderSensChart();
+  renderTable(cur);
+}
+
+function activeComponents(p) {
+  return COMPONENTS.filter(c => Math.abs(p[c.key] || 0) > 1e-6);
+}
+
+function renderStackChart(cur) {
+  const scen = [{ name: '現在', p: cur.p }, ...snapshots.map(s => ({ name: s.name, p: s.perKg }))];
+  const labels = scen.map(s => s.name);
+  const comps = COMPONENTS.filter(c => scen.some(s => Math.abs(s.p[c.key] || 0) > 1e-6));
+  stackChart.data.labels = labels;
+  stackChart.data.datasets = comps.map(c => ({
+    label: c.label,
+    data: scen.map(s => +toUnit(s.p[c.key] || 0).toFixed(3)),
+    backgroundColor: c.color, borderWidth: 0, borderRadius: 3, stack: 'cost',
+  }));
+  stackChart.options.plugins.refLines = { lines: targetLines() };
+  stackChart.options.scales.y.title.text = 'LCOH (' + S.unit + ')';
+  stackChart.update('none');
+}
+
+function renderShareChart(cur) {
+  const pos = COMPONENTS.filter(c => (cur.p[c.key] || 0) > 1e-6);
+  shareChart.data.labels = pos.map(c => c.label);
+  shareChart.data.datasets[0].data = pos.map(c => +toUnit(cur.p[c.key]).toFixed(3));
+  shareChart.data.datasets[0].backgroundColor = pos.map(c => c.color);
+  shareChart.update('none');
+}
+
+function renderSensChart() {
+  const v = S.sensVar;
+  const ranges = { cf: [10, 95], elecPrice: [3, 30], capexPerKW: [50000, 350000], wacc: [1, 15] };
+  const labelMap = { cf: '設備利用率 (%)', elecPrice: '電力単価 (円/kWh)', capexPerKW: 'CAPEX単価 (千円/kW)', wacc: '割引率 (%)' };
+  const [a, b] = ranges[v]; const steps = 28;
+  const xs = [], ys = [];
+  for (let i = 0; i <= steps; i++) {
+    const val = a + (b - a) * i / steps;
+    const r = compute({ ...S, [v]: val });
+    xs.push(val); ys.push(+toUnit(r.totalPerKg).toFixed(2));
+  }
+  const xlab = (x) => v === 'capexPerKW' ? Math.round(x / 1000) : v === 'cf' ? Math.round(x) : v === 'wacc' ? x.toFixed(0) : x.toFixed(0);
+  sensChart.data.labels = xs.map(xlab);
+  sensChart.data.datasets[0].data = ys;
+  // 現在値のマーカー
+  const curX = S[v];
+  sensChart.data.datasets[1].data = xs.map((x, i) => Math.abs(x - curX) === Math.min(...xs.map(xx => Math.abs(xx - curX))) ? ys[i] : null);
+  sensChart.options.scales.x.title = { display: true, text: labelMap[v], color: '#64748b', font: { size: 11 } };
+  sensChart.options.scales.y.title.text = 'LCOH (' + S.unit + ')';
+  sensChart.update('none');
+}
+
+function renderTable(cur) {
+  const comps = activeComponents(cur.p);
+  const rows = comps.map(c => {
+    const perKg = cur.p[c.key];
+    const share = cur.grossPos > 0 ? (perKg / cur.grossPos * 100) : 0;
+    return `<tr class="border-b border-white/5">
+      <td class="py-2 pr-3"><span class="inline-block w-2.5 h-2.5 rounded-sm mr-2 align-middle" style="background:${c.color}"></span>${c.label}</td>
+      <td class="text-right py-2 px-3">${fmt(perKg / NM3_PER_KG, 2)}</td>
+      <td class="text-right py-2 px-3">${fmt(perKg, 1)}</td>
+      <td class="text-right py-2 px-3">${(perKg / S.fx).toFixed(3)}</td>
+      <td class="text-right py-2 pl-3 ${perKg < 0 ? 'text-emerald-400' : 'text-slate-400'}">${share >= 0 ? share.toFixed(1) : share.toFixed(1)}%</td>
+    </tr>`;
+  }).join('');
+  const t = cur.totalPerKg;
+  const totalRow = `<tr class="font-semibold text-white border-t border-white/20">
+      <td class="py-2 pr-3">合計 LCOH</td>
+      <td class="text-right py-2 px-3">${fmt(t / NM3_PER_KG, 2)}</td>
+      <td class="text-right py-2 px-3">${fmt(t, 1)}</td>
+      <td class="text-right py-2 px-3">${(t / S.fx).toFixed(3)}</td>
+      <td class="text-right py-2 pl-3">100%</td>
+    </tr>`;
+  $('breakdownBody').innerHTML = rows + totalRow;
+}
+
+/* ============================================================
+   イベント
+============================================================ */
+function bind() {
+  // 入力（委譲）
+  const onInput = (e) => {
+    const k = e.target.dataset.key; if (!k) return;
+    let val = parseFloat(e.target.value);
+    if (isNaN(val)) return;
+    S[k] = val;
+    const field = e.target.closest('[data-field]');
+    if (field) field.querySelectorAll('[data-key]').forEach(el => { if (el !== e.target) el.value = val; });
+    renderAll();
+  };
+  $('inputGroups').addEventListener('input', onInput);
+  $('comprGroup').addEventListener('input', onInput);
+
+  // 単位タブ
+  $('unitTabs').addEventListener('click', (e) => {
+    const u = e.target.dataset.unit; if (!u) return;
+    S.unit = u;
+    [...$('unitTabs').children].forEach(b => b.classList.toggle('active', b.dataset.unit === u));
+    renderAll();
+  });
+
+  // プリセット
+  $('presetBtns').addEventListener('click', (e) => {
+    const p = e.target.dataset.preset; if (!p) return;
+    Object.assign(S, PRESETS[p]); S.preset = p;
+    [...$('presetBtns').children].forEach(b => b.classList.toggle('active', b.dataset.preset === p));
+    renderInputs(); renderAll();
+  });
+
+  // 圧縮トグル
+  $('inclCompr').addEventListener('change', (e) => {
+    S.inclCompr = e.target.checked;
+    $('comprGroup').classList.toggle('hidden', !S.inclCompr);
+    renderAll();
+  });
+
+  // 感度の変数選択
+  $('sensVar').addEventListener('change', (e) => { S.sensVar = e.target.value; renderSensChart(); });
+
+  // 比較スナップショット
+  $('btnSnap').addEventListener('click', () => {
+    const cur = compute(S);
+    const name = `${S.preset} ${fmt(S.cf, 0)}% / ${fmt(S.elecPrice, 0)}円`;
+    snapshots.push({ name, perKg: { ...cur.p } });
+    if (snapshots.length > 5) snapshots.shift();
+    renderAll();
+  });
+  $('btnClearSnap').addEventListener('click', () => { snapshots = []; renderAll(); });
+
+  // リセット
+  $('btnReset').addEventListener('click', () => {
+    S = { ...DEFAULTS }; snapshots = [];
+    $('inclCompr').checked = false; $('comprGroup').classList.add('hidden');
+    [...$('presetBtns').children].forEach(b => b.classList.toggle('active', b.dataset.preset === S.preset));
+    [...$('unitTabs').children].forEach(b => b.classList.toggle('active', b.dataset.unit === S.unit));
+    $('sensVar').value = S.sensVar;
+    renderInputs(); renderAll();
+  });
+
+  // シナリオ保存 / 読込 / 削除（localStorage）
+  $('btnSave').addEventListener('click', () => {
+    const name = prompt('シナリオ名を入力してください', `${S.preset} ${new Date().toLocaleDateString('ja-JP')}`);
+    if (!name) return;
+    const all = loadStore(); all[name] = S; saveStore(all); refreshScenarioList(name);
+  });
+  $('btnDelete').addEventListener('click', () => {
+    const name = $('scenarioList').value; if (!name) return;
+    const all = loadStore(); delete all[name]; saveStore(all); refreshScenarioList('');
+  });
+  $('scenarioList').addEventListener('change', (e) => {
+    const name = e.target.value; if (!name) return;
+    const all = loadStore(); if (!all[name]) return;
+    S = { ...DEFAULTS, ...all[name] };
+    syncControlsFromState(); renderInputs(); renderAll();
+  });
+
+  // JSON 入出力
+  $('btnExport').addEventListener('click', () => {
+    const blob = new Blob([JSON.stringify(S, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = 'lcoh-scenario.json'; a.click(); URL.revokeObjectURL(a.href);
+  });
+  $('btnImport').addEventListener('click', () => $('fileImport').click());
+  $('fileImport').addEventListener('change', (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try { S = { ...DEFAULTS, ...JSON.parse(reader.result) }; syncControlsFromState(); renderInputs(); renderAll(); }
+      catch { alert('JSONの読み込みに失敗しました'); }
+    };
+    reader.readAsText(file); e.target.value = '';
+  });
+}
+
+function syncControlsFromState() {
+  $('inclCompr').checked = !!S.inclCompr;
+  $('comprGroup').classList.toggle('hidden', !S.inclCompr);
+  [...$('presetBtns').children].forEach(b => b.classList.toggle('active', b.dataset.preset === S.preset));
+  [...$('unitTabs').children].forEach(b => b.classList.toggle('active', b.dataset.unit === S.unit));
+  $('sensVar').value = S.sensVar;
+}
+
+/* ---------- localStorage ---------- */
+const STORE_KEY = 'lcoh_scenarios_v1';
+function loadStore() { try { return JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch { return {}; } }
+function saveStore(o) { localStorage.setItem(STORE_KEY, JSON.stringify(o)); }
+function refreshScenarioList(sel) {
+  const all = loadStore();
+  $('scenarioList').innerHTML = '<option value="">— 保存シナリオ —</option>' +
+    Object.keys(all).map(n => `<option value="${n}" ${n === sel ? 'selected' : ''}>${n}</option>`).join('');
+}
+
+/* ============================================================
+   初期化
+============================================================ */
+function init() {
+  renderInputs();
+  initCharts();
+  bind();
+  refreshScenarioList('');
+  renderAll();
+}
+init();
+</script>
+</body>
+</html>
