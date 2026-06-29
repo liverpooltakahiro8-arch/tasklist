@@ -378,6 +378,26 @@ function toUnit(perKg) {
 function unitDecimals() { return S.unit === '$/kg' ? 2 : (S.unit === '¥/kg' ? 0 : 1); }
 function fmt(v, d = 0) { return (isFinite(v) ? v : 0).toLocaleString('ja-JP', { minimumFractionDigits: d, maximumFractionDigits: d }); }
 
+/* ---------- 取り込みJSONの検証（既知キーのみ採用・型強制） ---------- */
+const UNITS = ['¥/Nm³', '¥/kg', '$/kg'];
+const SENS_VARS = ['cf', 'elecPrice', 'capexPerKW', 'wacc'];
+function sanitizeState(obj) {
+  const out = { ...DEFAULTS };
+  if (obj && typeof obj === 'object') {
+    for (const k of Object.keys(DEFAULTS)) {
+      if (!(k in obj)) continue;
+      const dv = DEFAULTS[k];
+      if (typeof dv === 'number') { const n = Number(obj[k]); if (isFinite(n)) out[k] = n; }
+      else if (typeof dv === 'boolean') out[k] = !!obj[k];
+      else if (typeof dv === 'string' && typeof obj[k] === 'string') out[k] = obj[k];
+    }
+  }
+  if (!UNITS.includes(out.unit)) out.unit = DEFAULTS.unit;
+  if (!SENS_VARS.includes(out.sensVar)) out.sensVar = DEFAULTS.sensVar;
+  if (!(out.preset in PRESETS)) out.preset = DEFAULTS.preset;
+  return out;
+}
+
 /* ============================================================
    入力UIの描画
 ============================================================ */
@@ -545,7 +565,7 @@ function renderStackChart(cur) {
   stackChart.data.datasets = comps.map(c => ({
     label: c.label,
     data: scen.map(s => +toUnit(s.p[c.key] || 0).toFixed(3)),
-    backgroundColor: c.color, borderWidth: 0, borderRadius: 3, stack: 'cost',
+    backgroundColor: c.color, borderWidth: 0, borderRadius: 3, stack: 'cost', maxBarThickness: 96,
   }));
   stackChart.options.plugins.refLines = { lines: targetLines() };
   stackChart.options.scales.y.title.text = 'LCOH (' + S.unit + ')';
@@ -682,7 +702,7 @@ function bind() {
   $('scenarioList').addEventListener('change', (e) => {
     const name = e.target.value; if (!name) return;
     const all = loadStore(); if (!all[name]) return;
-    S = { ...DEFAULTS, ...all[name] };
+    S = sanitizeState(all[name]);
     syncControlsFromState(); renderInputs(); renderAll();
   });
 
@@ -697,7 +717,7 @@ function bind() {
     const file = e.target.files[0]; if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
-      try { S = { ...DEFAULTS, ...JSON.parse(reader.result) }; syncControlsFromState(); renderInputs(); renderAll(); }
+      try { S = sanitizeState(JSON.parse(reader.result)); syncControlsFromState(); renderInputs(); renderAll(); }
       catch { alert('JSONの読み込みに失敗しました'); }
     };
     reader.readAsText(file); e.target.value = '';
