@@ -1,0 +1,1866 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AWD FS 試算ツール（社内版）</title>
+<!--
+  AWD プロジェクト フィジビリティスタディ（FS）試算ツール — 社内スタンドアロン版
+  ------------------------------------------------------------------------
+  ・完全オフライン動作（外部CDN・ネット接続不要）。Boxからダウンロードして
+    ブラウザで開くだけで使用できます（file:// でも動作）。
+  ・グラフは外部ライブラリを使わず自前のCanvas描画で実装。
+  ・データはブラウザに自動保存（localStorage）＋JSONファイルで保存/共有可能。
+  ------------------------------------------------------------------------
+  機能：
+   ① ベースライン想定         … 慣行（湛水）での基準排出量を試算
+   ② 削減量想定（手弁当）     … AWD水管理計画での削減量を事前試算
+   ③ 現地FSデータ入力         … 実測の日次データ（気温・水位）から実排出量を算定
+-->
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Helvetica Neue','Hiragino Kaku Gothic ProN','Meiryo',sans-serif;font-size:14px;background:#eef1f5;color:#1f2933;line-height:1.5}
+  h1{font-size:18px;font-weight:700}
+  h2{font-size:15px;font-weight:700;color:#243b53;margin-bottom:12px;border-left:4px solid #2b6cb0;padding-left:10px}
+  h3{font-size:13px;font-weight:700;color:#486581;margin-bottom:8px}
+
+  /* ---- header ---- */
+  .app-header{background:#1a3c5e;color:#fff;padding:12px 22px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+  .app-header .logo{font-size:18px;font-weight:700;letter-spacing:.02em}
+  .app-header .badge{font-size:11px;background:rgba(255,255,255,.18);padding:2px 8px;border-radius:4px}
+  .app-header .proj{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .app-header .proj input{border:1px solid #3a5f82;border-radius:5px;padding:6px 10px;font-size:13px;background:#0f2c47;color:#fff;min-width:200px}
+  .app-header .proj input::placeholder{color:#8fa9c2}
+  .app-header .save-state{font-size:11px;color:#9fd9b0}
+
+  .hbtn{border:none;border-radius:5px;padding:6px 12px;cursor:pointer;font-size:12px;font-weight:600;background:#2b6cb0;color:#fff}
+  .hbtn:hover{background:#225a96}
+  .hbtn.ghost{background:rgba(255,255,255,.12);color:#fff}
+  .hbtn.ghost:hover{background:rgba(255,255,255,.22)}
+  .hbtn.danger{background:#b54a4a}
+  .hbtn.danger:hover{background:#9c3b3b}
+
+  .container{max-width:1240px;margin:0 auto;padding:18px}
+  .card{background:#fff;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.08);padding:18px 20px;margin-bottom:16px}
+
+  /* ---- forms ---- */
+  .form-row{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end}
+  .form-group{display:flex;flex-direction:column;gap:3px;min-width:128px;flex:1}
+  .form-group label{font-size:11px;color:#627d98;font-weight:600}
+  .form-group input,.form-group select{border:1px solid #cbd2d9;border-radius:5px;padding:6px 8px;font-size:13px;width:100%;background:#fafbfc}
+  .form-group input:focus,.form-group select:focus{outline:none;border-color:#2b6cb0;background:#fff;box-shadow:0 0 0 2px rgba(43,108,176,.12)}
+  .form-group small{font-size:10px;color:#9aa5b1}
+
+  /* ---- tabs ---- */
+  .tabs{display:flex;gap:0;background:#fff;border-radius:8px 8px 0 0;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08);margin-bottom:0}
+  .tab{flex:1;padding:14px 12px;cursor:pointer;font-size:14px;font-weight:700;color:#829ab1;text-align:center;border-bottom:3px solid transparent;transition:.15s;background:#f7f9fb}
+  .tab:hover{background:#eef3f8;color:#486581}
+  .tab.active{color:#1a3c5e;border-bottom-color:#2b6cb0;background:#fff}
+  .tab .num{display:inline-flex;width:22px;height:22px;border-radius:50%;background:#cbd2d9;color:#fff;align-items:center;justify-content:center;font-size:12px;margin-right:6px;vertical-align:middle}
+  .tab.active .num{background:#2b6cb0}
+  .tab-body{background:#fff;border-radius:0 0 8px 8px;box-shadow:0 1px 3px rgba(0,0,0,.08);padding:20px;margin-bottom:16px}
+  .tab-panel{display:none}
+  .tab-panel.active{display:block}
+
+  /* ---- KPI ---- */
+  .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:18px}
+  .kpi{border-radius:8px;padding:14px 16px}
+  .kpi-label{font-size:11px;font-weight:700;opacity:.85;margin-bottom:5px}
+  .kpi-value{font-size:25px;font-weight:800;line-height:1}
+  .kpi-unit{font-size:11px;opacity:.7;margin-top:4px}
+  .kpi-blue{background:#e6f0fb;color:#1a5fa8}
+  .kpi-green{background:#e3f6ec;color:#177245}
+  .kpi-orange{background:#fff1e0;color:#b45309}
+  .kpi-gray{background:#eef1f5;color:#334e68}
+  .kpi-teal{background:#e0f5f4;color:#0f7173}
+
+  /* ---- tables ---- */
+  .tbl-wrap{overflow-x:auto;border:1px solid #e4e9ef;border-radius:6px}
+  table{border-collapse:collapse;width:100%;font-size:12.5px}
+  thead th{background:#f1f5f9;color:#486581;font-weight:700;padding:8px;text-align:center;border-bottom:2px solid #d9e2ec;white-space:nowrap}
+  tbody td{padding:5px 8px;border-bottom:1px solid #eef2f6;text-align:right}
+  tbody td:first-child{text-align:left}
+  tbody tr:hover td{background:#f7fafc}
+  tfoot td{padding:7px 8px;font-weight:700;background:#f1f5f9;border-top:2px solid #d9e2ec;text-align:right}
+
+  .editable input,.editable select{width:100%;border:1px solid #d9e2ec;border-radius:4px;padding:4px 5px;font-size:12.5px;background:#fafbfc}
+  .editable input:focus,.editable select:focus{outline:none;border-color:#2b6cb0;background:#fff}
+  .editable td{padding:4px 6px}
+
+  .td-base{color:#1a5fa8}
+  .td-awd{color:#177245;font-weight:600}
+  .td-diff{color:#b45309;font-weight:700}
+  .row-awd{background:#f0fbf4!important}
+
+  .tag{display:inline-block;font-size:10px;border-radius:3px;padding:1px 7px;font-weight:700}
+  .tag-flood{background:#e6f0fb;color:#1a5fa8}
+  .tag-awd{background:#e3f6ec;color:#177245}
+
+  /* ---- buttons ---- */
+  .btn{border:none;border-radius:6px;cursor:pointer;font-weight:700;font-size:13px}
+  .btn-primary{background:#2b6cb0;color:#fff;padding:10px 26px}
+  .btn-primary:hover{background:#225a96}
+  .btn-sm{padding:6px 13px;font-size:12px}
+  .btn-light{background:#e6f0fb;color:#1a5fa8;border:1px solid #b6d0ec}
+  .btn-light:hover{background:#d3e4f7}
+  .btn-green{background:#e3f6ec;color:#177245;border:1px solid #a8ddbd}
+  .btn-green:hover{background:#c9efd7}
+  .btn-del{background:#fbe6e6;color:#b71c1c;border:1px solid #f0bcbc;border-radius:4px;padding:3px 9px;cursor:pointer;font-size:12px;font-weight:700}
+  .btn-del:hover{background:#f5cccc}
+
+  .actions-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:14px 0}
+
+  /* ---- info / notes ---- */
+  .note{background:#fffbe6;border:1px solid #ffe28a;border-radius:6px;padding:10px 14px;font-size:12px;color:#5a4a00;margin-bottom:14px}
+  .note b{color:#3a2f00}
+  .info{background:#eef6ff;border:1px solid #b6d6f5;border-radius:6px;padding:10px 14px;font-size:12px;color:#1a4971;margin-bottom:14px}
+  .muted{color:#829ab1;font-size:12px}
+
+  canvas{display:block;width:100%}
+  .chart-box{border:1px solid #e4e9ef;border-radius:6px;padding:10px;margin-bottom:16px;background:#fff}
+  .chart-title{font-size:12px;font-weight:700;color:#486581;margin-bottom:6px}
+
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:760px){.grid2{grid-template-columns:1fr}.tab{font-size:12px;padding:11px 6px}.tab .num{display:none}}
+
+  .empty{text-align:center;color:#9aa5b1;padding:34px;font-size:13px}
+  details summary{cursor:pointer;font-weight:700;color:#486581;font-size:13px;padding:4px 0}
+  details[open] summary{margin-bottom:10px}
+  .method-table{font-size:12px}
+  .method-table td{text-align:left;padding:6px 8px;border-bottom:1px solid #eef2f6}
+  .method-table td:first-child{font-weight:700;color:#334e68;white-space:nowrap}
+  textarea.paste{width:100%;min-height:90px;border:1px solid #cbd2d9;border-radius:5px;padding:8px;font-family:monospace;font-size:12px;background:#fafbfc}
+
+  /* ---- guide / 解説タブ ---- */
+  #panel-guide h2{margin-top:26px}
+  #panel-guide h2:first-of-type{margin-top:8px}
+  .g-text{font-size:13.5px;color:#334e68;margin-bottom:10px}
+  .g-text b{color:#1a3c5e}
+  .g-table{font-size:12.5px}
+  .g-table td{text-align:left;padding:7px 9px;border-bottom:1px solid #eef2f6;vertical-align:top}
+  .g-table td:first-child{font-weight:700;color:#334e68;white-space:nowrap}
+  .g-table thead th{text-align:left}
+  .flow{display:flex;align-items:stretch;gap:8px;flex-wrap:wrap;margin:6px 0 4px}
+  .flow-step{flex:1;min-width:200px;background:#f7fafc;border:1px solid #e4e9ef;border-radius:8px;padding:12px 14px;font-size:13px}
+  .flow-step b{color:#1a3c5e}
+  .flow-num{display:inline-flex;width:22px;height:22px;border-radius:50%;background:#2b6cb0;color:#fff;align-items:center;justify-content:center;font-size:12px;font-weight:700;margin-right:6px}
+  .flow-arrow{display:flex;align-items:center;color:#9aa5b1;font-size:20px;font-weight:700}
+  @media(max-width:760px){.flow-arrow{transform:rotate(90deg);justify-content:center}}
+  .calc-flow{background:#f0f6fc;border:1px solid #cfe2f5;border-radius:8px;padding:14px 16px;font-size:13px;color:#1a3c5e;line-height:2}
+  .calc-flow b{background:#fff;border:1px solid #b6d0ec;border-radius:4px;padding:2px 7px}
+  .calc-flow .seq{color:#627d98;font-size:12px;margin:0 2px}
+  .g-src{font-size:12px;color:#52606d;margin-top:14px}
+  .g-src ul{margin:6px 0 0 18px}
+  .g-src li{margin:3px 0}
+  .g-src a{color:#2b6cb0}
+
+  /* ---- accordion ---- */
+  .accordion{display:flex;flex-direction:column;gap:6px;margin-bottom:8px}
+  .acc-item{border:1px solid #dde5ef;border-radius:8px;overflow:hidden;transition:box-shadow .15s}
+  .acc-item:hover{box-shadow:0 2px 8px rgba(43,108,176,.1)}
+  .acc-head{display:flex;align-items:center;gap:10px;padding:13px 16px;cursor:pointer;background:#f7fafc;user-select:none;flex-wrap:wrap}
+  .acc-head:hover{background:#eef4fb}
+  .acc-item.open .acc-head{background:#eef4fb;border-bottom:1px solid #d0e2f5}
+  .acc-tag{font-size:10px;font-weight:700;border-radius:4px;padding:2px 8px;white-space:nowrap;flex-shrink:0}
+  .acc-tag.inp{background:#e3f6ec;color:#177245}
+  .acc-tag.param{background:#e6f0fb;color:#1a5fa8}
+  .acc-tag.auto{background:#f0f0f9;color:#553d9b}
+  .acc-title{font-size:14px;font-weight:700;color:#1a3c5e;flex:1;min-width:160px}
+  .acc-ex{font-size:12px;color:#829ab1;margin-left:auto;white-space:nowrap}
+  .acc-arrow{font-size:12px;color:#9aa5b1;margin-left:8px;transition:transform .2s;flex-shrink:0}
+  .acc-item.open .acc-arrow{transform:rotate(180deg)}
+  .acc-body{display:none;padding:18px 20px;background:#fff;animation:slideDown .18s ease}
+  .acc-item.open .acc-body{display:block}
+  @keyframes slideDown{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+  .acc-grid{display:grid;grid-template-columns:1fr 240px;gap:20px}
+  @media(max-width:700px){.acc-grid{grid-template-columns:1fr}}
+  .acc-main p{font-size:13.5px;color:#334e68;margin-bottom:10px;line-height:1.7}
+  .acc-main p:last-child{margin-bottom:0}
+  .acc-main b{color:#1a3c5e}
+  .acc-side{display:flex;flex-direction:column;gap:10px}
+  .acc-formula{background:#f0f6fc;border:1px solid #cfe2f5;border-radius:6px;padding:12px 14px;font-family:monospace;font-size:12.5px;color:#1a3c5e;line-height:1.8;white-space:pre-wrap}
+  .acc-note{background:#fffbe6;border:1px solid #ffe28a;border-radius:6px;padding:10px 12px;font-size:12px;color:#5a4a00;line-height:1.6}
+
+  /* ---- scenario manager ---- */
+  .scen-savebar{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap}
+  .scen-empty{color:#9aa5b1;font-size:13px;padding:14px;text-align:center;background:#f7fafc;border:1px dashed #cbd2d9;border-radius:8px}
+  .scen-row{display:flex;align-items:center;gap:12px;padding:11px 14px;border:1px solid #dde5ef;border-radius:8px;margin-bottom:8px;flex-wrap:wrap;background:#fafcfe;transition:.15s}
+  .scen-row:hover{box-shadow:0 2px 8px rgba(43,108,176,.1);border-color:#b6d0ec}
+  .scen-row.active{border-color:#2b6cb0;background:#eef4fb;box-shadow:0 0 0 1px #2b6cb0 inset}
+  .scen-info{flex:1;min-width:200px}
+  .scen-name{font-size:14px;font-weight:700;color:#1a3c5e}
+  .scen-active-badge{font-size:10px;font-weight:700;background:#2b6cb0;color:#fff;border-radius:4px;padding:1px 7px;margin-left:8px;vertical-align:middle}
+  .scen-meta{font-size:11.5px;color:#829ab1;margin-top:2px}
+  .scen-meta b{color:#52606d;font-weight:600}
+  .scen-actions{display:flex;gap:6px;flex-wrap:wrap}
+  .scen-actions button{border:1px solid #cbd2d9;background:#fff;border-radius:5px;padding:5px 11px;font-size:12px;font-weight:600;cursor:pointer;color:#486581}
+  .scen-actions button:hover{background:#eef4fb;border-color:#b6d0ec;color:#1a5fa8}
+  .scen-actions button.load{background:#2b6cb0;color:#fff;border-color:#2b6cb0}
+  .scen-actions button.load:hover{background:#225a96;color:#fff}
+  .scen-actions button.del{color:#b71c1c;border-color:#f0bcbc}
+  .scen-actions button.del:hover{background:#fbe6e6;color:#b71c1c}
+</style>
+</head>
+<body>
+
+<div class="app-header">
+  <span class="logo">AWD FS 試算ツール</span>
+  <span class="badge">社内版 / オフライン動作</span>
+  <div class="proj">
+    <input id="projName" placeholder="プロジェクト名を入力…" oninput="saveState()">
+    <button class="hbtn ghost" onclick="exportJSON()">💾 保存(JSON)</button>
+    <button class="hbtn ghost" onclick="document.getElementById('importFile').click()">📂 読込(JSON)</button>
+    <input type="file" id="importFile" accept=".json" style="display:none" onchange="importJSON(event)">
+    <button class="hbtn danger" onclick="resetAll()">新規</button>
+    <span class="save-state" id="saveState"></span>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- ============ シナリオ管理 ============ -->
+  <div class="card">
+    <h2>保存済みシナリオ（この端末内に保存）</h2>
+    <p class="muted" style="margin-bottom:12px">
+      プロジェクト・季節（乾季／雨季など）ごとに入力内容を名前を付けて保存できます。JSONファイルを書き出さなくても、この端末のブラウザ内に複数の状態を保持し、ワンクリックで切り替えられます。
+    </p>
+    <div class="scen-savebar">
+      <div class="form-group" style="flex:2">
+        <label>シナリオ名</label>
+        <input id="scenName" placeholder="例：A圃場 / 乾季プラン">
+      </div>
+      <div class="form-group" style="flex:2">
+        <label>メモ・季節など（任意）</label>
+        <input id="scenNote" placeholder="例：乾季・中干し延長14日">
+      </div>
+      <button class="btn btn-primary btn-sm" style="height:34px" onclick="saveNewScenario()">💾 現在の状態を保存</button>
+    </div>
+    <div id="scen-list" style="margin-top:14px"></div>
+  </div>
+
+  <!-- ============ 共通パラメータ ============ -->
+  <div class="card">
+    <h2>共通パラメータ（全機能で使用）</h2>
+    <div class="form-row" style="margin-bottom:12px">
+      <div class="form-group">
+        <label>地域プリセット</label>
+        <select id="preset" onchange="applyPreset()">
+          <option value="">カスタム</option>
+          <option value="warm_jp">日本_温暖</option>
+          <option value="sea">東南アジア_高温</option>
+          <option value="cool">冷涼地域</option>
+        </select>
+        <small>Tier2_DB代表値</small>
+      </div>
+      <div class="form-group">
+        <label>EFc（kgCH₄/ha/day）</label>
+        <input type="number" id="efc" value="1.3" step="0.01" min="0.1" oninput="saveState()">
+        <small>基準メタン排出係数</small>
+      </div>
+      <div class="form-group">
+        <label>SFw_AWD（AWD排水時）</label>
+        <input type="number" id="sfw_awd" value="0.52" step="0.01" min="0.1" max="1" oninput="saveState()">
+        <small>湛水時=1.0 固定</small>
+      </div>
+      <div class="form-group">
+        <label>SFo（有機物係数）</label>
+        <input type="number" id="sfo" value="1.0" step="0.01" min="0.1" oninput="saveState()">
+        <small>通常1.0</small>
+      </div>
+      <div class="form-group">
+        <label>SFs（土壌係数）</label>
+        <input type="number" id="sfs" value="1.0" step="0.01" min="0.1" oninput="saveState()">
+        <small>通常1.0</small>
+      </div>
+      <div class="form-group">
+        <label>Q10（温度感度）</label>
+        <input type="number" id="q10" value="2.0" step="0.1" min="1" oninput="saveState()">
+        <small>通常2.0</small>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>SFw_base（ベースライン水管理）</label>
+        <input type="number" id="sfw_base" value="1.0" step="0.01" min="0.1" oninput="saveState()">
+        <small>作期中の慣行水管理。常時湛水=1.0 / 1回落水=0.71 / 複数回落水=0.55</small>
+      </div>
+      <div class="form-group">
+        <label>SFp（作付け前水管理）</label>
+        <input type="number" id="sfp" value="1.0" step="0.01" min="0.1" oninput="saveState()">
+        <small>作付前の湛水歴なし=1.0 / 短期湛水&lt;180日=1.22 / 作付前湛水&gt;30日=2.41（ベースラインを上げられる）</small>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>圃場面積（ha）</label>
+        <input type="number" id="area" value="1.0" step="0.01" min="0.01" oninput="saveState()">
+      </div>
+      <div class="form-group">
+        <label>CH₄ GWP</label>
+        <select id="gwp" onchange="saveState()">
+          <option value="28">28（AR5 100年）</option>
+          <option value="27">27（AR6 100年）</option>
+          <option value="25">25（AR4 100年）</option>
+          <option value="34">34（AR5 20年）</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>プロジェクト期間（年）</label>
+        <input type="number" id="projYears" value="5" min="1" max="40" oninput="saveState()">
+        <small>削減量の積算に使用</small>
+      </div>
+      <div class="form-group" style="flex:2"></div>
+    </div>
+  </div>
+
+  <!-- ============ タブ ============ -->
+  <div class="tabs">
+    <div class="tab active" data-tab="baseline" onclick="switchTab('baseline')"><span class="num">1</span>ベースライン想定</div>
+    <div class="tab" data-tab="reduction" onclick="switchTab('reduction')"><span class="num">2</span>削減量想定（手弁当）</div>
+    <div class="tab" data-tab="field" onclick="switchTab('field')"><span class="num">3</span>現地FSデータ入力</div>
+    <div class="tab" data-tab="measure" onclick="switchTab('measure')"><span class="num">4</span>実測メタン記録</div>
+    <div class="tab" data-tab="guide" onclick="switchTab('guide')">📖 解説・用語</div>
+  </div>
+
+  <div class="tab-body">
+
+    <!-- ---------- ① ベースライン想定 ---------- -->
+    <div class="tab-panel active" id="panel-baseline">
+      <div class="info">
+        <b>① ベースライン想定：</b>プロジェクトを実施しない場合（慣行＝<b>全期間湛水</b>）の基準メタン排出量を試算します。
+        作付期間を区切り、各期間の代表的な日最低・最高気温を入力してください。
+      </div>
+
+      <h3>作付期間スケジュール（②と共通）</h3>
+      <div class="tbl-wrap">
+        <table class="editable">
+          <thead>
+            <tr><th>#</th><th>期間名</th><th>開始日</th><th>終了日</th><th>日最低℃</th><th>日最高℃</th><th>日数</th><th></th></tr>
+          </thead>
+          <tbody id="baseline-period-tbody"></tbody>
+        </table>
+      </div>
+      <div class="actions-bar">
+        <button class="btn btn-light btn-sm" onclick="addPeriod()">＋ 期間を追加</button>
+        <button class="btn btn-primary" onclick="calcBaseline()">▶ ベースラインを計算</button>
+      </div>
+
+      <div id="baseline-results" style="display:none">
+        <div class="kpi-grid">
+          <div class="kpi kpi-blue">
+            <div class="kpi-label">ベースライン排出量（作期合計）</div>
+            <div class="kpi-value" id="bl-total">—</div>
+            <div class="kpi-unit">tCO₂e</div>
+          </div>
+          <div class="kpi kpi-gray">
+            <div class="kpi-label">合計CH₄</div>
+            <div class="kpi-value" id="bl-ch4">—</div>
+            <div class="kpi-unit">kgCH₄</div>
+          </div>
+          <div class="kpi kpi-gray">
+            <div class="kpi-label">作付日数</div>
+            <div class="kpi-value" id="bl-days">—</div>
+            <div class="kpi-unit">日</div>
+          </div>
+          <div class="kpi kpi-gray">
+            <div class="kpi-label">面積あたり原単位</div>
+            <div class="kpi-value" id="bl-perha">—</div>
+            <div class="kpi-unit">tCO₂e/ha</div>
+          </div>
+        </div>
+        <div class="chart-box">
+          <div class="chart-title">期間別ベースライン排出量（tCO₂e）</div>
+          <canvas id="bl-chart"></canvas>
+        </div>
+        <div class="tbl-wrap">
+          <table id="bl-table">
+            <thead><tr><th>期間名</th><th>日数</th><th>平均気温℃</th><th>f_T</th><th>日排出量<br>(kgCH₄/ha/日)</th><th>合計kgCH₄</th><th>tCO₂e</th></tr></thead>
+            <tbody id="bl-tbody"></tbody>
+            <tfoot id="bl-tfoot"></tfoot>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---------- ② 削減量想定（手弁当） ---------- -->
+    <div class="tab-panel" id="panel-reduction">
+      <div class="info">
+        <b>② 削減量想定（手弁当）：</b>本格FS前の事前試算です。①と同じ作付期間に対して<b>AWD水管理計画</b>（どの期間を中干し／AWD排水にするか）を割り当て、
+        ベースラインとの差分から削減量を試算します。
+      </div>
+
+      <h3>水管理計画の割当（期間ごとに 湛水 / AWD排水 を選択）</h3>
+      <div class="tbl-wrap">
+        <table class="editable">
+          <thead>
+            <tr><th>#</th><th>期間名</th><th>開始日</th><th>終了日</th><th>日最低℃</th><th>日最高℃</th><th>水管理計画</th><th>日数</th></tr>
+          </thead>
+          <tbody id="reduction-period-tbody"></tbody>
+        </table>
+      </div>
+      <div class="actions-bar">
+        <button class="btn btn-light btn-sm" onclick="addPeriod()">＋ 期間を追加</button>
+        <button class="btn btn-primary" onclick="calcReduction()">▶ 削減量を計算</button>
+      </div>
+
+      <div id="reduction-results" style="display:none">
+        <div class="kpi-grid">
+          <div class="kpi kpi-blue">
+            <div class="kpi-label">ベースライン</div>
+            <div class="kpi-value" id="rd-base">—</div>
+            <div class="kpi-unit">tCO₂e / 作期</div>
+          </div>
+          <div class="kpi kpi-green">
+            <div class="kpi-label">AWDシナリオ</div>
+            <div class="kpi-value" id="rd-awd">—</div>
+            <div class="kpi-unit">tCO₂e / 作期</div>
+          </div>
+          <div class="kpi kpi-orange">
+            <div class="kpi-label">削減量（1作期）</div>
+            <div class="kpi-value" id="rd-reduc">—</div>
+            <div class="kpi-unit">tCO₂e</div>
+          </div>
+          <div class="kpi kpi-orange">
+            <div class="kpi-label">削減量/ha/年（年1作想定）</div>
+            <div class="kpi-value" id="rd-reduc-ha">—</div>
+            <div class="kpi-unit">tCO₂e/ha/年</div>
+          </div>
+          <div class="kpi kpi-gray">
+            <div class="kpi-label">削減率</div>
+            <div class="kpi-value" id="rd-rate">—</div>
+            <div class="kpi-unit">%</div>
+          </div>
+          <div class="kpi kpi-teal">
+            <div class="kpi-label">プロジェクト積算削減</div>
+            <div class="kpi-value" id="rd-total">—</div>
+            <div class="kpi-unit" id="rd-total-unit">tCO₂e</div>
+          </div>
+        </div>
+        <div class="chart-box">
+          <div class="chart-title">期間別 ベースライン vs AWD（tCO₂e）</div>
+          <canvas id="rd-chart"></canvas>
+        </div>
+        <div class="tbl-wrap">
+          <table id="rd-table">
+            <thead><tr><th>期間名</th><th>日数</th><th>水管理</th><th>f_T</th><th>Base<br>tCO₂e</th><th>AWD<br>tCO₂e</th><th>削減量<br>tCO₂e</th><th>削減率</th></tr></thead>
+            <tbody id="rd-tbody"></tbody>
+            <tfoot id="rd-tfoot"></tfoot>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---------- ③ 現地FSデータ入力 ---------- -->
+    <div class="tab-panel" id="panel-field">
+      <div class="info">
+        <b>③ 現地FSデータ入力：</b>現地で実測した<b>日次データ（日最低・最高気温、水位）</b>を入力します。
+        水位0cm以下が<b>連続3日以上</b>でAWD排水と自動判定し、SFw・f_T・日排出量を自動計算。実測ベースの排出量と、同条件の湛水ベースラインとの削減量を算定します。
+      </div>
+
+      <details>
+        <summary>📋 Excelからまとめて貼り付け（任意）</summary>
+        <p class="muted" style="margin:6px 0">Excelで「日付・日最低気温・日最高気温・水位」の4列を選択しコピー → 下の枠に貼り付けて「取り込み」。日付は <code>2026-06-01</code> / <code>2026/6/1</code> 形式に対応。</p>
+        <textarea class="paste" id="pasteBox" placeholder="2026-06-01	22	33	5&#10;2026-06-02	23	34	3&#10;2026-06-03	22	31	-2 ..."></textarea>
+        <div class="actions-bar" style="margin:8px 0 0">
+          <button class="btn btn-light btn-sm" onclick="importPaste()">取り込み</button>
+          <span class="muted">※既存の行に追加されます</span>
+        </div>
+      </details>
+
+      <h3 style="margin-top:14px">日次データ入力</h3>
+      <div class="tbl-wrap" style="max-height:420px;overflow-y:auto">
+        <table class="editable" id="field-input-table">
+          <thead>
+            <tr><th>#</th><th>日付</th><th>日最低℃</th><th>日最高℃</th><th>水位cm</th><th>連続排水日数</th><th>判定</th><th></th></tr>
+          </thead>
+          <tbody id="field-input-tbody"></tbody>
+        </table>
+      </div>
+      <div class="actions-bar">
+        <button class="btn btn-light btn-sm" onclick="addFieldRow()">＋ 行を追加</button>
+        <button class="btn btn-light btn-sm" onclick="addFieldRowsRange()">＋ 日付範囲で一括追加</button>
+        <button class="btn btn-del" onclick="clearField()">全行クリア</button>
+        <button class="btn btn-primary" onclick="calcField()">▶ 実排出量を計算</button>
+      </div>
+
+      <div id="field-results" style="display:none">
+        <div class="kpi-grid">
+          <div class="kpi kpi-blue">
+            <div class="kpi-label">湛水ベースライン（実測気温）</div>
+            <div class="kpi-value" id="fd-base">—</div>
+            <div class="kpi-unit">tCO₂e</div>
+          </div>
+          <div class="kpi kpi-green">
+            <div class="kpi-label">実測排出量（AWD実績）</div>
+            <div class="kpi-value" id="fd-actual">—</div>
+            <div class="kpi-unit">tCO₂e</div>
+          </div>
+          <div class="kpi kpi-orange">
+            <div class="kpi-label">削減量（実測）</div>
+            <div class="kpi-value" id="fd-reduc">—</div>
+            <div class="kpi-unit">tCO₂e</div>
+          </div>
+          <div class="kpi kpi-orange">
+            <div class="kpi-label">削減量/ha/年（実測・年換算）</div>
+            <div class="kpi-value" id="fd-reduc-ha">—</div>
+            <div class="kpi-unit">tCO₂e/ha/年</div>
+          </div>
+          <div class="kpi kpi-gray">
+            <div class="kpi-label">削減率</div>
+            <div class="kpi-value" id="fd-rate">—</div>
+            <div class="kpi-unit">%</div>
+          </div>
+          <div class="kpi kpi-teal">
+            <div class="kpi-label">AWD排水日数 / 全日数</div>
+            <div class="kpi-value" id="fd-awddays">—</div>
+            <div class="kpi-unit">日</div>
+          </div>
+        </div>
+        <div class="chart-box">
+          <div class="chart-title">累積排出量の推移（tCO₂e）— ベースライン vs 実測</div>
+          <canvas id="fd-chart"></canvas>
+        </div>
+        <div class="actions-bar" style="justify-content:flex-end">
+          <button class="btn btn-green btn-sm" onclick="exportFieldCSV()">CSVダウンロード</button>
+        </div>
+        <div class="tbl-wrap" style="max-height:380px;overflow-y:auto">
+          <table id="fd-table">
+            <thead><tr><th>日付</th><th>最低℃</th><th>最高℃</th><th>水位</th><th>連続排水</th><th>判定</th><th>SFw</th><th>f_T</th><th>Base<br>tCO₂e</th><th>実測<br>tCO₂e</th><th>削減<br>tCO₂e</th></tr></thead>
+            <tbody id="fd-tbody"></tbody>
+            <tfoot id="fd-tfoot"></tfoot>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---------- ④ 実測メタン記録 ---------- -->
+    <div class="tab-panel" id="panel-measure">
+      <div class="info">
+        <b>④ 実測メタン記録：</b>現地でチャンバー法等により実測したメタンフラックス（<b>gCH₄/m²/日</b>）を計測日ごとに記録します。
+        ③で入力した同じ日付の気温・水位からモデルが推定する排出量を自動換算して並べ、<b>実測 vs 推定の差</b>を観察できます。
+        実測値からは現地固有の<b>EFc（基準排出係数）も逆算</b>し、モデルのキャリブレーションに使えます。
+      </div>
+      <div class="note">
+        <b>使い方の考え方：</b>FS（事前検討）段階では実測値はまだありません。このタブは<b>プロジェクト実施中のモニタリング</b>で、週1〜2回のチャンバー計測値を蓄積し、①②の推定モデルが現地で妥当かを検証する用途です。
+        実測フラックスの単位は <b>gCH₄/m²/日</b>（チャンバー法の一般的な出力単位）で入力してください。
+      </div>
+
+      <details>
+        <summary>📋 Excelからまとめて貼り付け（任意）</summary>
+        <p class="muted" style="margin:6px 0">「日付・実測フラックス(gCH₄/m²/日)・メモ」の列を選択しコピー → 貼り付けて「取り込み」。メモ列は省略可。</p>
+        <textarea class="paste" id="pasteMeasureBox" placeholder="2026-06-08	0.18	A圃場 地点1&#10;2026-06-15	0.09	落水3日目&#10;2026-06-22	0.07 ..."></textarea>
+        <div class="actions-bar" style="margin:8px 0 0">
+          <button class="btn btn-light btn-sm" onclick="importMeasurePaste()">取り込み</button>
+          <span class="muted">※既存の行に追加されます</span>
+        </div>
+      </details>
+
+      <h3 style="margin-top:14px">実測フラックス入力</h3>
+      <div class="tbl-wrap" style="max-height:380px;overflow-y:auto">
+        <table class="editable" id="measure-input-table">
+          <thead>
+            <tr><th>#</th><th>計測日</th><th>実測フラックス<br>gCH₄/m²/日</th><th>メモ（地点・手法など）</th><th></th></tr>
+          </thead>
+          <tbody id="measure-input-tbody"></tbody>
+        </table>
+      </div>
+      <div class="actions-bar">
+        <button class="btn btn-light btn-sm" onclick="addMeasureRow()">＋ 行を追加</button>
+        <button class="btn btn-del" onclick="clearMeasure()">全行クリア</button>
+        <button class="btn btn-primary" onclick="calcMeasure()">▶ 推定と比較</button>
+      </div>
+
+      <div id="measure-results" style="display:none">
+        <div class="kpi-grid">
+          <div class="kpi kpi-green">
+            <div class="kpi-label">実測フラックス平均</div>
+            <div class="kpi-value" id="ms-actavg">—</div>
+            <div class="kpi-unit">gCH₄/m²/日</div>
+          </div>
+          <div class="kpi kpi-blue">
+            <div class="kpi-label">モデル推定平均（同日）</div>
+            <div class="kpi-value" id="ms-estavg">—</div>
+            <div class="kpi-unit">gCH₄/m²/日</div>
+          </div>
+          <div class="kpi kpi-orange">
+            <div class="kpi-label">平均かい離（実測÷推定）</div>
+            <div class="kpi-value" id="ms-ratio">—</div>
+            <div class="kpi-unit">倍（1.0で一致）</div>
+          </div>
+          <div class="kpi kpi-teal">
+            <div class="kpi-label">逆算した現地EFc（平均）</div>
+            <div class="kpi-value" id="ms-efc">—</div>
+            <div class="kpi-unit">kgCH₄/ha/日</div>
+          </div>
+          <div class="kpi kpi-green">
+            <div class="kpi-label">実測の年間排出（平均flux×365）</div>
+            <div class="kpi-value" id="ms-actco2">—</div>
+            <div class="kpi-unit">tCO₂e/ha/年</div>
+          </div>
+          <div class="kpi kpi-gray">
+            <div class="kpi-label">照合できた計測点</div>
+            <div class="kpi-value" id="ms-matched">—</div>
+            <div class="kpi-unit">点</div>
+          </div>
+        </div>
+        <div class="info" id="ms-efc-hint" style="display:none"></div>
+        <div class="chart-box">
+          <div class="chart-title">実測フラックス vs モデル推定（gCH₄/m²/日）</div>
+          <canvas id="ms-chart"></canvas>
+        </div>
+        <div class="actions-bar" style="justify-content:flex-end">
+          <button class="btn btn-green btn-sm" onclick="exportMeasureCSV()">CSVダウンロード</button>
+        </div>
+        <div class="tbl-wrap" style="max-height:380px;overflow-y:auto">
+          <table id="ms-table">
+            <thead><tr><th>計測日</th><th>実測<br>gCH₄/m²/日</th><th>推定<br>gCH₄/m²/日</th><th>差<br>(実測−推定)</th><th>実測÷推定</th><th>判定<br>(③より)</th><th>逆算EFc</th><th>メモ</th></tr></thead>
+            <tbody id="ms-tbody"></tbody>
+            <tfoot id="ms-tfoot"></tfoot>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---------- 📖 解説・用語 ---------- -->
+    <div class="tab-panel" id="panel-guide">
+
+      <div class="info">
+        このページは、ツールの背景にある考え方・専門用語・計算式をまとめた<b>解説ページ</b>です。元のExcel（入力ガイド／係数説明）の内容に加え、AWDの仕組みを平易に補足しています。
+      </div>
+
+      <!-- 0. このツールの全体像 -->
+      <h2>このツールでできること（3機能の関係）</h2>
+      <p class="g-text">AWDプロジェクトのFS（実現可能性調査）では、「どれだけ温室効果ガスを減らせそうか」を段階的に詰めていきます。本ツールの3機能はその流れに対応しています。</p>
+      <div class="flow">
+        <div class="flow-step"><span class="flow-num">1</span><b>ベースライン想定</b><br><span class="muted">プロジェクトをやらない場合（慣行＝湛水）の基準排出量。これが「比較の土台」になります。</span></div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step"><span class="flow-num">2</span><b>削減量想定（手弁当）</b><br><span class="muted">AWD水管理の計画を当てはめ、ベースラインからどれだけ減るかを<b>事前にざっくり</b>見積もります。</span></div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step"><span class="flow-num">3</span><b>現地FSデータ入力</b><br><span class="muted">実際に測った日々の気温・水位を入れ、<b>実績</b>に基づく排出量・削減量を確認します。</span></div>
+      </div>
+
+      <!-- 1. AWDとは -->
+      <h2>AWD（間断灌漑）とは</h2>
+      <p class="g-text">
+        <b>AWD（Alternate Wetting and Drying＝間断灌漑）</b>は、水田を常に水で満たし続けるのではなく、
+        <b>「水を張った状態」と「水を抜いて干した状態」を数日おきに繰り返す</b>水管理方法です。
+        日本の慣行農法でいう<b>「中干し」</b>を計画的に行い、その期間を延長する取り組みも同じ考え方に含まれます。
+        水使用量の削減に加え、温室効果ガスであるメタンの排出を抑える効果があります。
+      </p>
+
+      <h3>なぜメタンが減るのか</h3>
+      <p class="g-text">
+        水田に水を張り続けると、土の中が酸素のない状態（嫌気的）になり、そこで働く微生物（メタン生成菌）が
+        大量の<b>メタン（CH₄）</b>を発生させます。メタンはCO₂の数十倍の温室効果を持つガスです。<br>
+        水を抜いて土を干す（落水）と土中に酸素が入り、メタンの発生が抑えられます。
+        この「干す」期間を設けることで、年間のメタン排出量を<b>おおむね2〜3割削減</b>できると報告されています
+        （中干し7日間で約2〜3割減、収量への影響は0〜4%程度）。
+      </p>
+
+      <!-- 2. クレジットの基本概念 -->
+      <h2>ベースライン・削減量・クレジットの考え方</h2>
+      <table class="method-table">
+        <tr><td>ベースライン</td><td>プロジェクトを<b>実施しなかった場合</b>に出ていたであろう排出量。慣行（湛水）が基準。「これだけ出るはずだった」という比較の土台。</td></tr>
+        <tr><td>プロジェクト排出量</td><td>AWD/中干しを<b>実施した場合</b>の排出量。ベースラインより小さくなります。</td></tr>
+        <tr><td>削減量</td><td><b>ベースライン − プロジェクト排出量</b>。この差が「減らせた量」。tCO₂e（CO₂換算トン）で表します。</td></tr>
+        <tr><td>カーボンクレジット</td><td>削減量を第三者（国など）が認証し、売買できる単位にしたもの。日本では2023年に「水稲栽培における中干し期間の延長」がJ-クレジットの方法論として承認されました。本ツールはその<b>事前検討（FS）用の概算</b>です。</td></tr>
+      </table>
+
+      <!-- 3. 計算の流れ -->
+      <h2>計算の流れ</h2>
+      <div class="calc-flow">
+        日最低・最高気温
+        <span class="seq">→ サイン波で24時刻に補間 →</span>
+        各時刻の温度 T
+        <span class="seq">→ Q10^((T−25)/10) の平均 →</span>
+        <b>f_T（温度補正）</b>
+        <span class="seq">→ ×EFc ×SFw ×SFo ×SFs →</span>
+        <b>日排出量(kgCH₄/ha)</b>
+        <span class="seq">→ ×面積 ×日数 →</span>
+        kgCH₄
+        <span class="seq">→ ×GWP÷1000 →</span>
+        <b>tCO₂e</b>
+      </div>
+
+      <!-- 4. 入力項目の説明 — アコーディオン -->
+      <h2>入力項目の説明</h2>
+      <p class="g-text muted" style="margin-bottom:10px">各項目をクリックすると詳しい説明が展開します。</p>
+      <div class="accordion">
+
+        <div class="acc-item">
+          <div class="acc-head" onclick="toggleAcc(this)">
+            <span class="acc-tag inp">毎日入力</span><span class="acc-title">日最低気温（℃）</span><span class="acc-ex">例：22℃</span><span class="acc-arrow">▼</span>
+          </div>
+          <div class="acc-body">
+            <div class="acc-grid">
+              <div class="acc-main">
+                <p><b>何のための値か：</b>その日の最も低い気温（通常は早朝の観測値）。</p>
+                <p>日最高気温と組み合わせて24時間分の気温カーブを自動計算します。気象庁のアメダスや現地の最低・最高温度計から取得できます。</p>
+                <p><b>なぜ重要か：</b>気温が低いとメタン生成菌の活性が下がり、排出量は少なくなります。逆に夜温が高いままだと排出増につながります。日内変動を正確に捉えるために最低・最高の両方が必要です。</p>
+              </div>
+              <div class="acc-side">
+                <div class="acc-formula">T(h) = 平均 + 振幅 × sin(2π(h−8)/24)</div>
+                <div class="acc-note">最低気温は早朝5時頃、最高気温は14時頃に出ると仮定してサイン波で補間します。</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="acc-item">
+          <div class="acc-head" onclick="toggleAcc(this)">
+            <span class="acc-tag inp">毎日入力</span><span class="acc-title">日最高気温（℃）</span><span class="acc-ex">例：33℃</span><span class="acc-arrow">▼</span>
+          </div>
+          <div class="acc-body">
+            <div class="acc-grid">
+              <div class="acc-main">
+                <p><b>何のための値か：</b>その日の最も高い気温（通常は午後2時前後の観測値）。</p>
+                <p>日最低気温と組み合わせて日内24時刻の温度カーブを自動計算します。暑い日ほど昼間の排出量が大きく増加するため、最高気温の精度がf_Tの精度に直結します。</p>
+                <p><b>目安：</b>日本の水稲作期（5〜9月）では25〜36℃程度。気温が基準温度（25℃）を上回るほど排出係数への補正が大きくなります。</p>
+              </div>
+              <div class="acc-side">
+                <div class="acc-formula">振幅 = (最高 − 最低) / 2</div>
+                <div class="acc-note">最低と最高の差が大きいほど日内変動が大きく、f_Tへの影響も増します。</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="acc-item">
+          <div class="acc-head" onclick="toggleAcc(this)">
+            <span class="acc-tag inp">毎日入力</span><span class="acc-title">水位（cm）</span><span class="acc-ex">例：＋5（湛水） / 0 / −3（排水）</span><span class="acc-arrow">▼</span>
+          </div>
+          <div class="acc-body">
+            <div class="acc-grid">
+              <div class="acc-main">
+                <p><b>何のための値か：</b>田面（地表面）を基準とした水位。プラスが湛水、ゼロ・マイナスが排水状態を示します。</p>
+                <p>このツールでは、<b>水位が0cm以下の日が連続して3日以上続いた時点</b>から「AWD排水」と自動判定し、SFw（水管理係数）を0.52に切り替えます。3日未満は湛水扱い（SFw=1.0）のままです。</p>
+                <p><b>なぜ3日か：</b>IPCCや農林水産省の方法論では、土壌嫌気状態の解消に一定の落水期間が必要とされるため、単日の一時的落水はメタン抑制効果として認めない考え方が一般的です。</p>
+              </div>
+              <div class="acc-side">
+                <div class="acc-formula">連続排水 ≥ 3日 → AWD排水（SFw=0.52）<br>連続排水 &lt; 3日 → 湛水（SFw=1.0）</div>
+                <div class="acc-note">現地での水位計測は「水位管」（多孔管を地面に立てて水位を目視確認）を使うのが一般的です。</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="acc-item">
+          <div class="acc-head" onclick="toggleAcc(this)">
+            <span class="acc-tag param">係数</span><span class="acc-title">EFc（基準メタン排出係数）</span><span class="acc-ex">単位：kgCH₄/ha/day</span><span class="acc-arrow">▼</span>
+          </div>
+          <div class="acc-body">
+            <div class="acc-grid">
+              <div class="acc-main">
+                <p><b>何のための値か：</b>「その地域・土壌・栽培条件での水田が、標準的な気温・湛水・有機物投入なしの条件で1日1haあたり何kgのメタンを出すか」を表す係数です。</p>
+                <p>地域ごとに異なり、気候・土壌・有機物量・灌漑水源などに依存します。IPCCのガイドラインやJ-クレジット方法論では国・地域別のデフォルト値が定められています。</p>
+                <p><b>いつ変更するか：</b>対象圃場の地域・気候帯・土壌タイプが変わる時。現地測定値があればそちらを優先します。</p>
+              </div>
+              <div class="acc-side">
+                <div class="acc-formula">日本_温暖 : 1.3<br>東南アジア高温 : 1.5<br>冷涼地域 : 1.0</div>
+                <div class="acc-note">値が大きいほどその圃場の基礎的なメタン発生ポテンシャルが高いことを意味します。</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="acc-item">
+          <div class="acc-head" onclick="toggleAcc(this)">
+            <span class="acc-tag auto">自動計算</span><span class="acc-title">SFw（水管理係数）</span><span class="acc-ex">湛水=1.0 ／ AWD排水=0.52（初期設定）</span><span class="acc-arrow">▼</span>
+          </div>
+          <div class="acc-body">
+            <div class="acc-grid">
+              <div class="acc-main">
+                <p><b>何のための値か：</b>水管理の形態がメタン排出に与える影響の大きさを表す倍率係数です。湛水（常時冠水）を1.0として、AWD排水時は何割になるかを示します。</p>
+                <p>AWD排水でSFwが0.52というのは、「落水することでメタン排出が湛水比で約52%（≒48%削減）になる」ことを意味します。</p>
+                <p><b>いつ手動変更するか：</b>適用する方法論（J-クレジット等）が規定する値を使う必要がある場合、または現地計測に基づく値が得られた場合。通常はツールが水位から自動判定します。</p>
+              </div>
+              <div class="acc-side">
+                <div class="acc-formula">SFw = 1.0（湛水）<br>SFw = SFw_AWD（排水）<br><br>削減率 ≈ 1 − SFw_AWD<br>例：1 − 0.52 = 48%</div>
+                <div class="acc-note">現地データモードでは水位計測値から自動判定。削減量想定モードでは期間ごとに「湛水/AWD」を選択して切り替えます。</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="acc-item">
+          <div class="acc-head" onclick="toggleAcc(this)">
+            <span class="acc-tag param">係数</span><span class="acc-title">SFw_base・SFp（ベースライン水管理・作付け前水管理）</span><span class="acc-ex">ベースラインの高さを決める係数</span><span class="acc-arrow">▼</span>
+          </div>
+          <div class="acc-body">
+            <div class="acc-grid">
+              <div class="acc-main">
+                <p><b>何のための値か：</b>ベースライン（プロジェクトをやらなかった場合の慣行）の水管理を表す係数です。AWDによる削減量は「ベースライン排出 − プロジェクト排出」で決まるため、<b>ベースラインが高いほど削減量（クレジット）も大きく</b>なります。</p>
+                <p><b>SFw_base（作期中の慣行水管理）：</b>ベースラインが常時湛水なら1.0。もし慣行ですでに1回落水しているなら0.71、複数回なら0.55と、ベースライン自体が下がります。慣行が湛水（1.0）であるほどAWDの削減余地が大きくなります。</p>
+                <p><b>SFp（作付け前の水管理）：</b>IPCCでは作期の排出に、作付け<b>前</b>の水管理状態を掛け合わせます。作付け前に長期湛水していた圃場は土壌に有機物が蓄積し、作期のメタンが増えるため係数が大きくなります。<b>作付け前に30日以上湛水すると2.41</b>まで上がり、ベースライン排出（＝削減ポテンシャル）を引き上げられます。</p>
+                <p><b>使い方の例：</b>「作付け前に意図的に湛水管理を行う圃場」をベースラインとして設定すると、SFpが1.0→1.9〜2.41となり、ベースライン排出が約2倍に。その分、AWD導入時の削減量も比例して大きくなります。※方法論・追加性の要件（そのベースラインが実態として妥当か）を必ず確認してください。</p>
+              </div>
+              <div class="acc-side">
+                <div class="acc-formula">日排出（ベース）=<br>EFc × SFw_base × SFp<br>　× SFo × SFs × f_T<br><br>SFp 参考値：<br>湛水歴なし = 1.0<br>短期湛水 &lt;180日 ≈ 1.22<br>作付前湛水 &gt;30日 = 2.41</div>
+                <div class="acc-note">SFpはベースラインとプロジェクトの両方に掛かるため、削減量は SFp に比例して増加します（削減率自体は不変）。値はIPCC 2019 Refinement Vol.4 Ch.5 の既定値。地域・方法論の規定値を優先してください。</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="acc-item">
+          <div class="acc-head" onclick="toggleAcc(this)">
+            <span class="acc-tag param">係数</span><span class="acc-title">SFo（有機物係数）</span><span class="acc-ex">通常：1.0 ／ わら還元等で増加</span><span class="acc-arrow">▼</span>
+          </div>
+          <div class="acc-body">
+            <div class="acc-grid">
+              <div class="acc-main">
+                <p><b>何のための値か：</b>有機物の投入状況がメタン排出に与える影響を補正する係数です。稲わらや堆肥などの有機物は、土中の嫌気的分解でメタンの材料（有機炭素）を増やします。</p>
+                <p><b>具体的な場面：</b>稲わらをすき込む（わら還元）場合は1.2〜2.0程度に増加。緑肥や大量の堆肥投入でも増加します。何も有機物を入れない場合は1.0のまま。</p>
+                <p><b>注意：</b>わら還元はメタン排出を大幅に増やす要因であり、AWD削減量の計算でも「ベースラインにわら還元分を含めるか」が重要な争点になります。</p>
+              </div>
+              <div class="acc-side">
+                <div class="acc-formula">わら還元なし : 1.0<br>わら還元あり : 1.2〜2.0<br>堆肥投入 : 条件による</div>
+                <div class="acc-note">ベースラインとプロジェクト期間で有機物投入条件が同じなら相殺されます。変わる場合は両方に正しい値を設定してください。</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="acc-item">
+          <div class="acc-head" onclick="toggleAcc(this)">
+            <span class="acc-tag param">係数</span><span class="acc-title">SFs（土壌係数）</span><span class="acc-ex">通常：1.0</span><span class="acc-arrow">▼</span>
+          </div>
+          <div class="acc-body">
+            <div class="acc-grid">
+              <div class="acc-main">
+                <p><b>何のための値か：</b>土壌の種類・性質がメタン排出に与える影響を補正する係数です。通常の水田土壌では1.0を使います。</p>
+                <p><b>変更が必要になる場面：</b>酸性硫酸塩土壌（干拓地や旧湿地跡）・砂質土壌・重粘土など、特殊な土壌タイプで計測値から補正が必要と判断された場合。ほとんどの現場では1.0で問題ありません。</p>
+                <p>IPCCデフォルトでは通常の浸水条件の鉱質土壌を1.0の基準とし、特殊土壌に対して異なる係数が定義されています。</p>
+              </div>
+              <div class="acc-side">
+                <div class="acc-formula">通常の水田土壌 : 1.0<br>特殊土壌 : 要検討</div>
+                <div class="acc-note">対象圃場が旧干拓地・干拓後の造成地・湿地転換地などの場合は専門家に確認することを推奨します。</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="acc-item">
+          <div class="acc-head" onclick="toggleAcc(this)">
+            <span class="acc-tag param">係数</span><span class="acc-title">Q10（温度感度係数）</span><span class="acc-ex">通常：2.0</span><span class="acc-arrow">▼</span>
+          </div>
+          <div class="acc-body">
+            <div class="acc-grid">
+              <div class="acc-main">
+                <p><b>何のための値か：</b>気温が10℃上昇したとき、メタン生成菌の活性（＝排出量）が何倍になるかを表す係数です。</p>
+                <p>Q10=2.0 は「10℃上がると排出が2倍になる」という意味。これは多くの微生物反応で観測される典型的な値です。たとえば25℃基準で35℃になると排出が約2倍、15℃になると約半分になります。</p>
+                <p><b>計算への影響：</b>このツールではQ10を使って「f_T（日内温度補正係数）」を計算します。夏の高温期は排出量がかなり増え、春先・秋は減ります。</p>
+                <p><b>変更する場面：</b>感度分析（Q10=1.8〜2.5で結果の幅を見たい）や、特定の研究・方法論で異なる値が定められている場合。</p>
+              </div>
+              <div class="acc-side">
+                <div class="acc-formula">f_T = Q10^((T−25)/10)<br>の24時刻平均<br><br>Q10=2, T=35℃ → ×2.0<br>Q10=2, T=25℃ → ×1.0<br>Q10=2, T=15℃ → ×0.5</div>
+                <div class="acc-note">温暖化が進むと排出量も増加するメカニズムがこのQ10に含まれています。</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="acc-item">
+          <div class="acc-head" onclick="toggleAcc(this)">
+            <span class="acc-tag auto">自動計算</span><span class="acc-title">f_T（日内温度補正係数）</span><span class="acc-ex">自動計算 / 入力不要</span><span class="acc-arrow">▼</span>
+          </div>
+          <div class="acc-body">
+            <div class="acc-grid">
+              <div class="acc-main">
+                <p><b>何のための値か：</b>その日の気温カーブ全体を通じたメタン生成活性の「平均的な倍率」を示す係数です。1日を通じた温度変化を積分して平均したものです。</p>
+                <p>日最低・最高気温から24時刻の温度T(h)を補間し、各時刻で Q10^((T(h)−25)/10) を計算。その24個の値を平均したものがf_Tです。</p>
+                <p><b>値の読み方：</b>f_T > 1.0 なら「基準気温25℃より排出が多い」、f_T < 1.0 なら少ない。夏の暑い日は1.2〜1.5程度、春先は0.6〜0.8程度になることが多いです。</p>
+              </div>
+              <div class="acc-side">
+                <div class="acc-formula">f_T = (1/24)×Σ Q10^((T(h)−25)/10)<br>（h=0〜23）<br><br>夏（均温29℃） ≈ 1.28<br>春（均温18℃） ≈ 0.69</div>
+                <div class="acc-note">f_Tが高いほど温度によって排出量が押し上げられています。同じ水管理でも夏と春で排出量が大きく異なるのはこの補正によるものです。</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="acc-item">
+          <div class="acc-head" onclick="toggleAcc(this)">
+            <span class="acc-tag auto">自動計算</span><span class="acc-title">日排出量（kgCH₄/ha/day）</span><span class="acc-ex">自動計算 / 入力不要</span><span class="acc-arrow">▼</span>
+          </div>
+          <div class="acc-body">
+            <div class="acc-grid">
+              <div class="acc-main">
+                <p><b>何のための値か：</b>その日、1haあたり何kgのメタンが排出されるかを示す最終的な日排出量です。</p>
+                <p>EFc（地域固有の基礎排出量）に、水管理（SFw）・有機物（SFo）・土壌（SFs）の3つの補正係数と、気温補正（f_T）を掛け合わせることで、実際の排出量に近い値を推計します。</p>
+                <p><b>この値の活用：</b>これに面積を掛けてkgCH₄/日、さらにGWPを掛けてtCO₂e/日に変換。期間合計でプロジェクトの削減量が求まります。</p>
+              </div>
+              <div class="acc-side">
+                <div class="acc-formula">日排出量 =<br>EFc × SFw × SFo × SFs × f_T<br><br>例：1.3×1.0×1.0×1.0×1.23<br>＝ 1.60 kgCH₄/ha/day</div>
+                <div class="acc-note">tCO₂e/日 = 日排出量 × 面積 × GWP ÷ 1000</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="acc-item">
+          <div class="acc-head" onclick="toggleAcc(this)">
+            <span class="acc-tag param">係数</span><span class="acc-title">GWP（地球温暖化係数）</span><span class="acc-ex">AR5: 28 ／ AR6: 27 ／ AR4: 25</span><span class="acc-arrow">▼</span>
+          </div>
+          <div class="acc-body">
+            <div class="acc-grid">
+              <div class="acc-main">
+                <p><b>何のための値か：</b>メタン（CH₄）の温室効果をCO₂と比較した場合の倍率です。CH₄の量をCO₂換算（tCO₂e）に変換するために使います。</p>
+                <p>メタンはCO₂に比べ温室効果が非常に強いガスですが、大気中での寿命が短い（約12年）ため、100年タイムスパンか20年タイムスパンかで値が変わります。</p>
+                <p><b>どれを選ぶか：</b>J-クレジット制度等の公的方法論が指定する値に合わせます。現時点ではAR5の28が多くの国内制度で使われています（AR6の27への移行も進行中）。</p>
+              </div>
+              <div class="acc-side">
+                <div class="acc-formula">tCO₂e = kgCH₄ × GWP ÷ 1000<br><br>AR5（100yr）: GWP = 28<br>AR6（100yr）: GWP = 27<br>AR5（20yr）: GWP = 86<br>AR4（100yr）: GWP = 25</div>
+                <div class="acc-note">GWPが大きいほど削減量（tCO₂e）も大きく計上されます。申請する制度・方法論に従って正しく選択してください。</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /accordion -->
+      <p class="muted" style="margin-top:6px">※温度補間：最低気温は早朝5時頃、最高気温は14時頃に出ると仮定し、24時刻をなめらかに補間します。厳密な実測の時刻別気温がある場合は、観測値を用いる方が精度は高くなります。</p>
+
+      <!-- 5. 係数の説明（Excel 係数説明由来） -->
+      <h2>係数の説明</h2>
+      <div class="tbl-wrap">
+        <table class="g-table">
+          <thead><tr><th>係数</th><th>意味</th><th>いつ変更するか</th><th>目安値 / 例</th></tr></thead>
+          <tbody>
+            <tr><td>EFc</td><td>基準メタン排出係数（kgCH₄/ha/day）</td><td>地域・圃場条件が変わる時</td><td>日本_温暖:1.3 / 東南アジア_高温:1.5 / 冷涼:1.0</td></tr>
+            <tr><td>SFw</td><td>水管理係数</td><td>通常は自動。手動変更は方法論の規定値を採用する時</td><td>湛水=1.0 / AWD排水=0.52</td></tr>
+            <tr><td>SFo</td><td>有機物係数（わら還元・堆肥など）</td><td>有機資材の投入条件が変わる時</td><td>通常1.0、条件により1.2〜2.0</td></tr>
+            <tr><td>SFs</td><td>土壌係数</td><td>特別な補正が必要な時</td><td>通常1.0</td></tr>
+            <tr><td>Q10</td><td>温度感度係数（10℃上昇時の倍率）</td><td>感度分析やモデル設定変更時</td><td>通常2.0</td></tr>
+            <tr><td>f_T</td><td>日内温度補正係数</td><td>自動計算（入力不要）</td><td>気温から自動</td></tr>
+            <tr><td>GWP</td><td>地球温暖化係数（CH₄をCO₂換算する倍率）</td><td>準拠する報告基準に合わせる</td><td>AR5:28 / AR6:27 / AR4:25</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- 6. 地域別代表値 -->
+      <h2>地域別の代表値（参考）</h2>
+      <div class="tbl-wrap">
+        <table class="g-table">
+          <thead><tr><th>地域</th><th>EFc 代表値</th><th>SFw_AWD 代表値</th><th>備考</th></tr></thead>
+          <tbody>
+            <tr><td>日本_温暖</td><td>1.3</td><td>0.52</td><td>初期設定の例</td></tr>
+            <tr><td>東南アジア_高温</td><td>1.5</td><td>0.45</td><td>高温条件の例</td></tr>
+            <tr><td>冷涼地域</td><td>1.0</td><td>0.60</td><td>低温条件の例</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- 7. 計算式まとめ -->
+      <h2>計算式まとめ</h2>
+      <table class="method-table">
+        <tr><td>時刻別気温</td><td>T(h) = (最低+最高)/2 + (最高−最低)/2 × sin(2π(h−8)/24)　（h=0〜23時、各時刻を小数2桁に丸め）</td></tr>
+        <tr><td>f_T（温度補正）</td><td>24時刻の Q10^((T−25)/10) の平均値</td></tr>
+        <tr><td>日排出量</td><td>EFc × SFw × SFo × SFs × f_T　（kgCH₄/ha/日）</td></tr>
+        <tr><td>SFw（水管理）</td><td>湛水 = 1.0 ／ AWD排水 = SFw_AWD（初期0.52）。現地データでは水位0cm以下が連続3日以上でAWD排水と自動判定</td></tr>
+        <tr><td>日CH₄量</td><td>日排出量 × 面積（ha）　（kgCH₄/日）</td></tr>
+        <tr><td>tCO₂e換算</td><td>kgCH₄ × GWP ÷ 1000</td></tr>
+        <tr><td>削減量</td><td>ベースライン排出量 − プロジェクト（AWD）排出量</td></tr>
+        <tr><td>プロジェクト積算削減</td><td>1作期の削減量 × プロジェクト期間（年）　※年1作を想定した概算</td></tr>
+      </table>
+
+      <!-- 8. 注意・出典 -->
+      <div class="note" style="margin-top:16px">
+        <b>ご注意：</b>本ツールは事前FS・概算を目的とした簡易モデルです。実際のクレジット申請・認証では、J-クレジット制度「水稲栽培における中干し期間の延長」などの<b>各方法論が定める規定値・測定要件・モニタリング方法</b>に従う必要があります。本ツールの数値はそのまま公式な削減量とはなりません。
+      </div>
+      <div class="g-src">
+        <b>参考情報の出典：</b>
+        <ul>
+          <li><a href="https://www.maff.go.jp/j/press/kanbo/b_kankyo/230301.html" target="_blank" rel="noopener">農林水産省：「水稲栽培における中干し期間の延長」がJ-クレジット制度の方法論として承認</a></li>
+          <li><a href="https://www.maff.go.jp/j/seisan/kankyo/ondanka/attach/pdf/nakaboshi-1.pdf" target="_blank" rel="noopener">農林水産省：「水稲栽培における中干し期間の延長」のJ-クレジット制度について（PDF）</a></li>
+          <li><a href="https://www.pref.tochigi.lg.jp/g59/documents/nakaboshiencyoumetan.pdf" target="_blank" rel="noopener">栃木県農業総合研究センター：水田から発生するメタン抑制技術（中干し延長）（PDF）</a></li>
+          <li><a href="https://www.bluedotgreen.co.jp/column/credit/mid-season-drainage-credit/" target="_blank" rel="noopener">中干しクレジットとは？（解説記事）</a></li>
+        </ul>
+      </div>
+
+    </div>
+
+  </div>
+
+  <p class="muted" style="text-align:center;padding-bottom:10px">
+    AWD FS 試算ツール（社内版）— 外部送信なし・ブラウザ内処理 / データはこの端末にのみ保存されます
+  </p>
+
+</div>
+
+<script>
+"use strict";
+// =====================================================================
+//  State & persistence
+// =====================================================================
+const LS_KEY = 'awd_fs_internal_v1';
+let state = defaultState();
+
+function defaultState(){
+  return {
+    projName:'',
+    params:{ preset:'', efc:1.3, sfw_awd:0.52, sfw_base:1.0, sfp:1.0, sfo:1.0, sfs:1.0, q10:2.0, area:1.0, gwp:28, projYears:5 },
+    periods:[],
+    field:[],
+    measure:[]
+  };
+}
+
+// inputから現在の共通パラメータを読み取り state へ反映
+function readParams(){
+  state.params = {
+    preset: val('preset',''),
+    efc:    num('efc',1.3),
+    sfw_awd:num('sfw_awd',0.52),
+    sfw_base:num('sfw_base',1.0),
+    sfp:    num('sfp',1.0),
+    sfo:    num('sfo',1.0),
+    sfs:    num('sfs',1.0),
+    q10:    num('q10',2.0),
+    area:   num('area',1.0),
+    gwp:    num('gwp',28),
+    projYears: parseInt(val('projYears','5'))||5
+  };
+  state.projName = val('projName','');
+}
+function val(id,d){ const e=document.getElementById(id); return e? e.value : d; }
+function num(id,d){ const v=parseFloat(val(id,d)); return isNaN(v)? d : v; }
+
+function saveState(){
+  readParams();
+  try{
+    localStorage.setItem(LS_KEY, JSON.stringify(state));
+    flashSaved();
+  }catch(e){ /* file:// 等で不可の場合は無視 */ }
+}
+let savedTimer=null;
+function flashSaved(){
+  const el=document.getElementById('saveState');
+  if(!el) return;
+  el.textContent='✓ 自動保存しました';
+  clearTimeout(savedTimer);
+  savedTimer=setTimeout(()=>{ el.textContent=''; }, 1600);
+}
+
+function loadState(){
+  try{
+    const raw=localStorage.getItem(LS_KEY);
+    if(raw){ state=Object.assign(defaultState(), JSON.parse(raw)); }
+  }catch(e){}
+  applyStateToInputs();
+}
+function applyStateToInputs(){
+  const p=state.params;
+  setVal('projName',state.projName);
+  setVal('preset',p.preset); setVal('efc',p.efc); setVal('sfw_awd',p.sfw_awd);
+  setVal('sfw_base',p.sfw_base); setVal('sfp',p.sfp);
+  setVal('sfo',p.sfo); setVal('sfs',p.sfs); setVal('q10',p.q10);
+  setVal('area',p.area); setVal('gwp',p.gwp); setVal('projYears',p.projYears);
+  renderPeriods(); renderFieldInput(); renderMeasureInput();
+}
+function setVal(id,v){ const e=document.getElementById(id); if(e!=null&&v!=null) e.value=v; }
+
+// =====================================================================
+//  Scenario manager — 複数の状態を端末内(localStorage)に名前付き保存
+// =====================================================================
+const SCEN_KEY='awd_fs_scenarios_v1';
+let activeScenId=null;   // 現在読み込み中のシナリオID（上書き保存の対象）
+
+function loadScenarios(){
+  try{ return JSON.parse(localStorage.getItem(SCEN_KEY)||'[]'); }catch(e){ return []; }
+}
+function saveScenarios(arr){
+  try{ localStorage.setItem(SCEN_KEY, JSON.stringify(arr)); }catch(e){ alert('保存に失敗しました（ブラウザの保存容量制限の可能性）'); }
+}
+function snapshot(){
+  readParams();
+  return JSON.parse(JSON.stringify({ projName:state.projName, params:state.params, periods:state.periods, field:state.field, measure:state.measure }));
+}
+function nowStr(){
+  const d=new Date(), p=n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+function saveNewScenario(){
+  const name=(document.getElementById('scenName').value||'').trim();
+  const note=(document.getElementById('scenNote').value||'').trim();
+  if(!name){ alert('シナリオ名を入力してください'); document.getElementById('scenName').focus(); return; }
+  const arr=loadScenarios();
+  const id='s'+Date.now();
+  arr.push({ id, name, note, savedAt:nowStr(), data:snapshot() });
+  saveScenarios(arr);
+  activeScenId=id;
+  document.getElementById('scenName').value=''; document.getElementById('scenNote').value='';
+  renderScenarios();
+  flashSaved();
+}
+function overwriteScenario(id){
+  const arr=loadScenarios(); const s=arr.find(x=>x.id===id); if(!s) return;
+  if(!confirm(`「${s.name}」を現在の入力内容で上書き保存します。よろしいですか？`)) return;
+  s.data=snapshot(); s.savedAt=nowStr();
+  saveScenarios(arr); activeScenId=id; renderScenarios(); flashSaved();
+}
+function loadScenario(id){
+  const arr=loadScenarios(); const s=arr.find(x=>x.id===id); if(!s) return;
+  state=Object.assign(defaultState(), JSON.parse(JSON.stringify(s.data)));
+  applyStateToInputs();
+  ['baseline-results','reduction-results','field-results','measure-results'].forEach(i=>{const el=document.getElementById(i); if(el)el.style.display='none';});
+  activeScenId=id;
+  saveState(); renderScenarios();
+  document.querySelector('.container').scrollIntoView({behavior:'smooth'});
+}
+function duplicateScenario(id){
+  const arr=loadScenarios(); const s=arr.find(x=>x.id===id); if(!s) return;
+  const copy=JSON.parse(JSON.stringify(s));
+  copy.id='s'+Date.now(); copy.name=s.name+'（複製）'; copy.savedAt=nowStr();
+  arr.push(copy); saveScenarios(arr); renderScenarios();
+}
+function deleteScenario(id){
+  const arr=loadScenarios(); const s=arr.find(x=>x.id===id); if(!s) return;
+  if(!confirm(`「${s.name}」を削除します。元に戻せません。よろしいですか？`)) return;
+  saveScenarios(arr.filter(x=>x.id!==id));
+  if(activeScenId===id) activeScenId=null;
+  renderScenarios();
+}
+function renameScenario(id){
+  const arr=loadScenarios(); const s=arr.find(x=>x.id===id); if(!s) return;
+  const name=prompt('シナリオ名', s.name); if(name===null) return;
+  const note=prompt('メモ・季節など（任意）', s.note||''); if(note===null) return;
+  s.name=name.trim()||s.name; s.note=note.trim();
+  saveScenarios(arr); renderScenarios();
+}
+
+function renderScenarios(){
+  const box=document.getElementById('scen-list'); if(!box) return;
+  const arr=loadScenarios();
+  if(!arr.length){ box.innerHTML='<div class="scen-empty">保存されたシナリオはまだありません。上の「💾 現在の状態を保存」で追加してください。</div>'; return; }
+  box.innerHTML='';
+  arr.slice().reverse().forEach(s=>{
+    const isActive=s.id===activeScenId;
+    const periodsN=(s.data.periods||[]).length, fieldN=(s.data.field||[]).length;
+    const proj=s.data.projName? `プロジェクト：<b>${escHtml(s.data.projName)}</b>　/　` : '';
+    const noteHtml=s.note? `<b>${escHtml(s.note)}</b>　/　` : '';
+    const row=document.createElement('div');
+    row.className='scen-row'+(isActive?' active':'');
+    row.innerHTML=`
+      <div class="scen-info">
+        <div class="scen-name">${escHtml(s.name)}${isActive?'<span class="scen-active-badge">表示中</span>':''}</div>
+        <div class="scen-meta">${noteHtml}${proj}期間${periodsN}件・日次${fieldN}件　/　保存：${s.savedAt}</div>
+      </div>
+      <div class="scen-actions">
+        <button class="load" onclick="loadScenario('${s.id}')">読込</button>
+        <button onclick="overwriteScenario('${s.id}')">上書き保存</button>
+        <button onclick="duplicateScenario('${s.id}')">複製</button>
+        <button onclick="renameScenario('${s.id}')">名前変更</button>
+        <button class="del" onclick="deleteScenario('${s.id}')">削除</button>
+      </div>`;
+    box.appendChild(row);
+  });
+}
+function escHtml(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// =====================================================================
+//  Presets
+// =====================================================================
+const PRESETS={ warm_jp:{efc:1.3,sfw_awd:0.52}, sea:{efc:1.5,sfw_awd:0.45}, cool:{efc:1.0,sfw_awd:0.60} };
+function applyPreset(){
+  const k=val('preset','');
+  if(k&&PRESETS[k]){ setVal('efc',PRESETS[k].efc); setVal('sfw_awd',PRESETS[k].sfw_awd); }
+  saveState();
+}
+
+// =====================================================================
+//  Date helpers
+// =====================================================================
+function fmt(d){ const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),da=String(d.getDate()).padStart(2,'0'); return `${y}-${m}-${da}`; }
+function addDays(s,n){ const d=new Date(s); d.setDate(d.getDate()+n); return fmt(d); }
+function daysBetween(a,b){ const d1=new Date(a),d2=new Date(b); return Math.round((d2-d1)/86400000)+1; }
+function parseDate(s){
+  if(!s) return null;
+  s=String(s).trim().replace(/\//g,'-');
+  const parts=s.split('-').map(x=>x.trim());
+  if(parts.length<3) return null;
+  let [y,m,d]=parts;
+  if(y.length<3){ const now=new Date(); y=now.getFullYear(); [m,d]=[parts[0],parts[1]]; }
+  const dt=new Date(`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`);
+  return isNaN(dt)? null : fmt(dt);
+}
+
+// =====================================================================
+//  Core formulas
+// =====================================================================
+function calcFT(tmin,tmax,q10){
+  const mean=(tmin+tmax)/2, amp=(tmax-tmin)/2;
+  let sum=0;
+  for(let h=0;h<24;h++){
+    let T=mean+amp*Math.sin(2*Math.PI*(h-8)/24);
+    T=Math.round(T*100)/100;   // 元Excelの ROUND(時刻温度,2) を再現し計算結果を一致させる
+    sum+=Math.pow(q10,(T-25)/10);
+  }
+  return sum/24;
+}
+function dailyEmissionPerHa(efc,sfw,sfo,sfs,fT){ return efc*sfw*sfo*sfs*fT; } // kgCH4/ha/day
+
+// =====================================================================
+//  Periods (① & ② shared)
+// =====================================================================
+function addPeriod(){
+  if(state.periods.length>=30){ alert('期間は最大30件までです'); return; }
+  const last=state.periods[state.periods.length-1];
+  const start=last? addDays(last.end,1) : fmt(new Date());
+  state.periods.push({ name:`期間${state.periods.length+1}`, start, end:addDays(start,14), tmin:20, tmax:30, waterPlan:'awd' });
+  renderPeriods(); saveState();
+}
+function deletePeriod(i){ state.periods.splice(i,1); renderPeriods(); saveState(); }
+function updPeriod(i,key,v){
+  if(key==='tmin'||key==='tmax') v=parseFloat(v);
+  state.periods[i][key]=v; saveState();
+  // 日数表示の更新のため再描画
+  renderPeriods();
+}
+function periodDays(p){ const d=daysBetween(p.start,p.end); return (d>0&&isFinite(d))? d : 0; }
+
+function renderPeriods(){
+  // ① baseline 用
+  const tb1=document.getElementById('baseline-period-tbody');
+  // ② reduction 用
+  const tb2=document.getElementById('reduction-period-tbody');
+  if(tb1) tb1.innerHTML='';
+  if(tb2) tb2.innerHTML='';
+  if(state.periods.length===0){
+    if(tb1) tb1.innerHTML='<tr><td colspan="8" class="empty">「＋ 期間を追加」で作付期間を登録してください</td></tr>';
+    if(tb2) tb2.innerHTML='<tr><td colspan="8" class="empty">①で期間を追加してください</td></tr>';
+    return;
+  }
+  state.periods.forEach((p,i)=>{
+    const days=periodDays(p);
+    if(tb1){
+      const r=document.createElement('tr');
+      r.innerHTML=`<td style="text-align:center;color:#9aa5b1">${i+1}</td>
+        <td><input value="${esc(p.name)}" onchange="updPeriod(${i},'name',this.value)" style="min-width:120px"></td>
+        <td><input type="date" value="${p.start}" onchange="updPeriod(${i},'start',this.value)"></td>
+        <td><input type="date" value="${p.end}" onchange="updPeriod(${i},'end',this.value)"></td>
+        <td><input type="number" step="0.5" value="${p.tmin}" onchange="updPeriod(${i},'tmin',this.value)"></td>
+        <td><input type="number" step="0.5" value="${p.tmax}" onchange="updPeriod(${i},'tmax',this.value)"></td>
+        <td style="text-align:center">${days}</td>
+        <td><button class="btn-del" onclick="deletePeriod(${i})">✕</button></td>`;
+      tb1.appendChild(r);
+    }
+    if(tb2){
+      const r=document.createElement('tr');
+      r.innerHTML=`<td style="text-align:center;color:#9aa5b1">${i+1}</td>
+        <td><input value="${esc(p.name)}" onchange="updPeriod(${i},'name',this.value)" style="min-width:120px"></td>
+        <td><input type="date" value="${p.start}" onchange="updPeriod(${i},'start',this.value)"></td>
+        <td><input type="date" value="${p.end}" onchange="updPeriod(${i},'end',this.value)"></td>
+        <td><input type="number" step="0.5" value="${p.tmin}" onchange="updPeriod(${i},'tmin',this.value)"></td>
+        <td><input type="number" step="0.5" value="${p.tmax}" onchange="updPeriod(${i},'tmax',this.value)"></td>
+        <td><select onchange="updPeriod(${i},'waterPlan',this.value)">
+          <option value="flood" ${p.waterPlan==='flood'?'selected':''}>湛水</option>
+          <option value="awd" ${p.waterPlan==='awd'?'selected':''}>AWD排水</option>
+        </select></td>
+        <td style="text-align:center">${days}</td>`;
+      tb2.appendChild(r);
+    }
+  });
+}
+function esc(s){ return String(s==null?'':s).replace(/"/g,'&quot;'); }
+
+// =====================================================================
+//  ① Baseline calculation
+// =====================================================================
+function calcBaseline(){
+  readParams();
+  if(!state.periods.length){ alert('作付期間を1件以上追加してください'); return; }
+  const {efc,sfw_base,sfp,sfo,sfs,q10,area,gwp}=state.params;
+  let rows=[], totCH4=0, totDays=0;
+  state.periods.forEach(p=>{
+    const days=periodDays(p); if(days<=0) return;
+    const fT=calcFT(p.tmin,p.tmax,q10);
+    const perHa=dailyEmissionPerHa(efc,sfw_base*sfp,sfo,sfs,fT);   // ベースライン SFw_base×SFp
+    const ch4=perHa*area*days;
+    const co2e=ch4*gwp/1000;
+    rows.push({name:p.name,days,avgT:(p.tmin+p.tmax)/2,fT,perHa,ch4,co2e});
+    totCH4+=ch4; totDays+=days;
+  });
+  if(!rows.length){ alert('有効な期間がありません（日付を確認してください）'); return; }
+  const totCO2e=totCH4*gwp/1000;
+
+  document.getElementById('bl-total').textContent=totCO2e.toFixed(3);
+  document.getElementById('bl-ch4').textContent=totCH4.toFixed(1);
+  document.getElementById('bl-days').textContent=totDays;
+  document.getElementById('bl-perha').textContent=area>0?(totCO2e/area).toFixed(3):'—';
+
+  const tb=document.getElementById('bl-tbody'); tb.innerHTML='';
+  rows.forEach(r=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td>${esc(r.name)}</td><td>${r.days}</td><td>${r.avgT.toFixed(1)}</td><td>${r.fT.toFixed(4)}</td>
+      <td>${r.perHa.toFixed(4)}</td><td>${r.ch4.toFixed(1)}</td><td class="td-base">${r.co2e.toFixed(4)}</td>`;
+    tb.appendChild(tr);
+  });
+  document.getElementById('bl-tfoot').innerHTML=`<tr><td>合計</td><td>${totDays}</td><td>—</td><td>—</td><td>—</td><td>${totCH4.toFixed(1)}</td><td>${totCO2e.toFixed(4)}</td></tr>`;
+
+  document.getElementById('baseline-results').style.display='block';
+  drawBars(document.getElementById('bl-chart'), rows.map(r=>r.name),
+    [{label:'ベースライン tCO₂e', color:'#2b6cb0', data:rows.map(r=>r.co2e)}]);
+}
+
+// =====================================================================
+//  ② Reduction estimate
+// =====================================================================
+function calcReduction(){
+  readParams();
+  if(!state.periods.length){ alert('①で作付期間を追加してください'); return; }
+  const {efc,sfw_awd,sfw_base,sfp,sfo,sfs,q10,area,gwp,projYears}=state.params;
+  let rows=[], totBase=0, totAwd=0, totDays=0;
+  state.periods.forEach(p=>{
+    const days=periodDays(p); if(days<=0) return;
+    const fT=calcFT(p.tmin,p.tmax,q10);
+    const sfwAwd = p.waterPlan==='awd'? sfw_awd : sfw_base;
+    const baseHa = dailyEmissionPerHa(efc,sfw_base*sfp,sfo,sfs,fT);
+    const awdHa  = dailyEmissionPerHa(efc,sfwAwd*sfp,sfo,sfs,fT);
+    const baseCO2e = baseHa*area*days*gwp/1000;
+    const awdCO2e  = awdHa *area*days*gwp/1000;
+    rows.push({name:p.name,days,fT,plan:p.waterPlan,base:baseCO2e,awd:awdCO2e,reduc:baseCO2e-awdCO2e});
+    totBase+=baseCO2e; totAwd+=awdCO2e; totDays+=days;
+  });
+  if(!rows.length){ alert('有効な期間がありません'); return; }
+  const reduc=totBase-totAwd;
+  const rate=totBase>0? reduc/totBase*100 : 0;
+  const projTotal=reduc*projYears;
+
+  document.getElementById('rd-base').textContent=totBase.toFixed(3);
+  document.getElementById('rd-awd').textContent=totAwd.toFixed(3);
+  document.getElementById('rd-reduc').textContent=reduc.toFixed(3);
+  document.getElementById('rd-reduc-ha').textContent=area>0?(reduc/area).toFixed(3):'—';
+  document.getElementById('rd-rate').textContent=rate.toFixed(1)+'%';
+  document.getElementById('rd-total').textContent=projTotal.toFixed(2);
+  document.getElementById('rd-total-unit').textContent=`tCO₂e（${projYears}年）`;
+
+  const tb=document.getElementById('rd-tbody'); tb.innerHTML='';
+  rows.forEach(r=>{
+    const planTag=r.plan==='awd'?'<span class="tag tag-awd">AWD</span>':'<span class="tag tag-flood">湛水</span>';
+    const rrate=r.base>0?(r.reduc/r.base*100):0;
+    const tr=document.createElement('tr');
+    if(r.plan==='awd') tr.className='row-awd';
+    tr.innerHTML=`<td>${esc(r.name)}</td><td>${r.days}</td><td>${planTag}</td><td>${r.fT.toFixed(4)}</td>
+      <td class="td-base">${r.base.toFixed(4)}</td><td class="td-awd">${r.awd.toFixed(4)}</td>
+      <td class="td-diff">${r.reduc>0?'+':''}${r.reduc.toFixed(4)}</td><td class="td-diff">${rrate.toFixed(1)}%</td>`;
+    tb.appendChild(tr);
+  });
+  document.getElementById('rd-tfoot').innerHTML=`<tr><td>合計</td><td>${totDays}</td><td>—</td><td>—</td>
+    <td>${totBase.toFixed(4)}</td><td>${totAwd.toFixed(4)}</td><td class="td-diff">${reduc>0?'+':''}${reduc.toFixed(4)}</td><td class="td-diff">${rate.toFixed(1)}%</td></tr>`;
+
+  document.getElementById('reduction-results').style.display='block';
+  drawBars(document.getElementById('rd-chart'), rows.map(r=>r.name),
+    [{label:'ベースライン', color:'#2b6cb0', data:rows.map(r=>r.base)},
+     {label:'AWD', color:'#177245', data:rows.map(r=>r.awd)}]);
+}
+
+// =====================================================================
+//  ③ Field data entry
+// =====================================================================
+function addFieldRow(){
+  const last=state.field[state.field.length-1];
+  const date=last&&last.date? addDays(last.date,1) : fmt(new Date());
+  state.field.push({date, tmin:20, tmax:30, water:5});
+  renderFieldInput(); saveState();
+}
+function addFieldRowsRange(){
+  const startStr=prompt('開始日を入力（例: 2026-06-01）', state.field.length? addDays(state.field[state.field.length-1].date,1) : fmt(new Date()));
+  if(!startStr) return;
+  const start=parseDate(startStr); if(!start){ alert('日付の形式が不正です'); return; }
+  const n=parseInt(prompt('日数を入力（例: 30）','30')); if(!n||n<1){ return; }
+  if(n>400){ alert('日数が多すぎます（最大400）'); return; }
+  for(let i=0;i<n;i++){ state.field.push({date:addDays(start,i), tmin:20, tmax:30, water:5}); }
+  renderFieldInput(); saveState();
+}
+function clearField(){ if(state.field.length&&confirm('日次データを全件削除します。よろしいですか？')){ state.field=[]; renderFieldInput(); saveState(); } }
+function deleteFieldRow(i){ state.field.splice(i,1); renderFieldInput(); saveState(); }
+function updField(i,key,v){
+  v=(key==='date')? v : parseFloat(v);
+  state.field[i][key]=v; saveState(); renderFieldInput();
+}
+
+// 連続排水日数とAWD判定を計算（水位0cm以下が連続3日以上でAWD排水）
+function computeDrainage(field){
+  let consec=0;
+  return field.map(row=>{
+    const w=parseFloat(row.water);
+    if(!isNaN(w)&&w<=0) consec++; else consec=0;
+    const isAWD = consec>=3;
+    return {...row, consec, judge: isAWD?'awd':'flood'};
+  });
+}
+
+function importPaste(){
+  const txt=document.getElementById('pasteBox').value.trim();
+  if(!txt){ alert('貼り付けデータがありません'); return; }
+  const lines=txt.split(/\r?\n/);
+  let added=0;
+  lines.forEach(line=>{
+    if(!line.trim()) return;
+    const cells=line.split(/\t|,/).map(c=>c.trim());
+    const date=parseDate(cells[0]);
+    if(!date) return; // ヘッダ行などはスキップ
+    const tmin=parseFloat(cells[1]), tmax=parseFloat(cells[2]), water=parseFloat(cells[3]);
+    state.field.push({date, tmin:isNaN(tmin)?20:tmin, tmax:isNaN(tmax)?30:tmax, water:isNaN(water)?0:water});
+    added++;
+  });
+  document.getElementById('pasteBox').value='';
+  renderFieldInput(); saveState();
+  alert(added+' 件を取り込みました');
+}
+
+function renderFieldInput(){
+  const tb=document.getElementById('field-input-tbody'); if(!tb) return;
+  tb.innerHTML='';
+  if(state.field.length===0){
+    tb.innerHTML='<tr><td colspan="8" class="empty">「＋ 行を追加」または「日付範囲で一括追加」、もしくはExcelから貼り付けてください</td></tr>';
+    return;
+  }
+  const comp=computeDrainage(state.field);
+  comp.forEach((row,i)=>{
+    const judgeTag=row.judge==='awd'?'<span class="tag tag-awd">AWD排水</span>':'<span class="tag tag-flood">湛水</span>';
+    const tr=document.createElement('tr');
+    if(row.judge==='awd') tr.className='row-awd';
+    tr.innerHTML=`<td style="text-align:center;color:#9aa5b1">${i+1}</td>
+      <td><input type="date" value="${row.date||''}" onchange="updField(${i},'date',this.value)"></td>
+      <td><input type="number" step="0.5" value="${row.tmin}" onchange="updField(${i},'tmin',this.value)"></td>
+      <td><input type="number" step="0.5" value="${row.tmax}" onchange="updField(${i},'tmax',this.value)"></td>
+      <td><input type="number" step="0.5" value="${row.water}" onchange="updField(${i},'water',this.value)"></td>
+      <td style="text-align:center">${row.consec}</td>
+      <td style="text-align:center">${judgeTag}</td>
+      <td><button class="btn-del" onclick="deleteFieldRow(${i})">✕</button></td>`;
+    tb.appendChild(tr);
+  });
+}
+
+let fieldComputed=[]; // CSV用に保持
+function calcField(){
+  readParams();
+  if(!state.field.length){ alert('日次データを入力してください'); return; }
+  const {efc,sfw_awd,sfw_base,sfp,sfo,sfs,q10,area,gwp}=state.params;
+  const comp=computeDrainage(state.field);
+  let rows=[], cumBase=0, cumAct=0, totBase=0, totAct=0, awdDays=0;
+  comp.forEach(row=>{
+    const tmin=parseFloat(row.tmin), tmax=parseFloat(row.tmax);
+    if(isNaN(tmin)||isNaN(tmax)||!row.date) return;
+    const fT=calcFT(tmin,tmax,q10);
+    const sfw = row.judge==='awd'? sfw_awd : sfw_base;
+    if(row.judge==='awd') awdDays++;
+    const baseHa = dailyEmissionPerHa(efc,sfw_base*sfp,sfo,sfs,fT);
+    const actHa  = dailyEmissionPerHa(efc,sfw*sfp,sfo,sfs,fT);
+    const baseCO2e=baseHa*area*gwp/1000;
+    const actCO2e =actHa *area*gwp/1000;
+    cumBase+=baseCO2e; cumAct+=actCO2e; totBase+=baseCO2e; totAct+=actCO2e;
+    rows.push({date:row.date,tmin,tmax,water:row.water,consec:row.consec,judge:row.judge,sfw,fT,
+      base:baseCO2e,act:actCO2e,reduc:baseCO2e-actCO2e,cumBase,cumAct});
+  });
+  if(!rows.length){ alert('有効なデータがありません（日付・気温を確認してください）'); return; }
+  fieldComputed=rows;
+  const reduc=totBase-totAct;
+  const rate=totBase>0? reduc/totBase*100 : 0;
+
+  document.getElementById('fd-base').textContent=totBase.toFixed(3);
+  document.getElementById('fd-actual').textContent=totAct.toFixed(3);
+  document.getElementById('fd-reduc').textContent=reduc.toFixed(3);
+  // 計測期間(rows.length日)の削減/ha を 365日に年換算
+  document.getElementById('fd-reduc-ha').textContent=(area>0&&rows.length>0)?((reduc/area)*(365/rows.length)).toFixed(3):'—';
+  document.getElementById('fd-rate').textContent=rate.toFixed(1)+'%';
+  document.getElementById('fd-awddays').textContent=`${awdDays} / ${rows.length}`;
+
+  const tb=document.getElementById('fd-tbody'); tb.innerHTML='';
+  rows.forEach(r=>{
+    const judgeTag=r.judge==='awd'?'<span class="tag tag-awd">AWD</span>':'<span class="tag tag-flood">湛水</span>';
+    const tr=document.createElement('tr');
+    if(r.judge==='awd') tr.className='row-awd';
+    tr.innerHTML=`<td>${r.date}</td><td>${r.tmin}</td><td>${r.tmax}</td><td>${r.water}</td>
+      <td style="text-align:center">${r.consec}</td><td style="text-align:center">${judgeTag}</td>
+      <td>${r.sfw.toFixed(2)}</td><td>${r.fT.toFixed(4)}</td>
+      <td class="td-base">${r.base.toFixed(5)}</td><td class="td-awd">${r.act.toFixed(5)}</td>
+      <td class="td-diff">${r.reduc>0?'+':''}${r.reduc.toFixed(5)}</td>`;
+    tb.appendChild(tr);
+  });
+  document.getElementById('fd-tfoot').innerHTML=`<tr><td>合計</td><td>—</td><td>—</td><td>—</td><td>—</td>
+    <td style="text-align:center">${awdDays}日AWD</td><td>—</td><td>—</td>
+    <td>${totBase.toFixed(4)}</td><td>${totAct.toFixed(4)}</td><td class="td-diff">${reduc>0?'+':''}${reduc.toFixed(4)}</td></tr>`;
+
+  document.getElementById('field-results').style.display='block';
+  drawLines(document.getElementById('fd-chart'), rows.map(r=>r.date),
+    [{label:'累積ベースライン', color:'#2b6cb0', data:rows.map(r=>r.cumBase)},
+     {label:'累積 実測', color:'#177245', data:rows.map(r=>r.cumAct)}]);
+}
+
+function exportFieldCSV(){
+  if(!fieldComputed.length){ alert('先に計算を実行してください'); return; }
+  const head=['日付','日最低気温','日最高気温','水位cm','連続排水日数','判定','SFw','f_T','Base_tCO2e','実測_tCO2e','削減_tCO2e','累積Base','累積実測'];
+  const lines=fieldComputed.map(r=>[r.date,r.tmin,r.tmax,r.water,r.consec,(r.judge==='awd'?'AWD排水':'湛水'),
+    r.sfw.toFixed(3),r.fT.toFixed(4),r.base.toFixed(5),r.act.toFixed(5),r.reduc.toFixed(5),r.cumBase.toFixed(5),r.cumAct.toFixed(5)]);
+  const csv=[head,...lines].map(r=>r.join(',')).join('\n');
+  downloadBlob('﻿'+csv, (state.projName||'AWD_FS')+'_field.csv', 'text/csv;charset=utf-8');
+}
+
+// =====================================================================
+//  ④ Measured methane (実測フラックス) — 推定との比較
+//  単位換算：kgCH4/ha/day × 0.1 = gCH4/m2/day
+//    （1 kg = 1000 g、1 ha = 10000 m² → 1000/10000 = 0.1）
+// =====================================================================
+const KGHA_TO_GM2 = 0.1;
+
+function addMeasureRow(){
+  const last=state.measure[state.measure.length-1];
+  const date=last&&last.date? addDays(last.date,7) : fmt(new Date()); // 計測は週1想定で+7日
+  state.measure.push({date, flux:'', note:''});
+  renderMeasureInput(); saveState();
+}
+function clearMeasure(){ if(state.measure.length&&confirm('実測記録を全件削除します。よろしいですか？')){ state.measure=[]; renderMeasureInput(); saveState(); } }
+function deleteMeasureRow(i){ state.measure.splice(i,1); renderMeasureInput(); saveState(); }
+function updMeasure(i,key,v){
+  state.measure[i][key]=(key==='flux')? v : v;
+  saveState();
+}
+function importMeasurePaste(){
+  const txt=document.getElementById('pasteMeasureBox').value.trim();
+  if(!txt){ alert('貼り付けデータがありません'); return; }
+  let added=0;
+  txt.split(/\r?\n/).forEach(line=>{
+    if(!line.trim()) return;
+    const cells=line.split(/\t|,/).map(c=>c.trim());
+    const date=parseDate(cells[0]); if(!date) return;
+    const flux=parseFloat(cells[1]);
+    state.measure.push({date, flux:isNaN(flux)?'':flux, note:cells[2]||''});
+    added++;
+  });
+  document.getElementById('pasteMeasureBox').value='';
+  renderMeasureInput(); saveState();
+  alert(added+' 件を取り込みました');
+}
+function renderMeasureInput(){
+  const tb=document.getElementById('measure-input-tbody'); if(!tb) return;
+  tb.innerHTML='';
+  if(state.measure.length===0){
+    tb.innerHTML='<tr><td colspan="5" class="empty">「＋ 行を追加」または貼り付けで実測フラックスを登録してください</td></tr>';
+    return;
+  }
+  state.measure.forEach((row,i)=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td style="text-align:center;color:#9aa5b1">${i+1}</td>
+      <td><input type="date" value="${row.date||''}" onchange="updMeasure(${i},'date',this.value)"></td>
+      <td><input type="number" step="0.001" value="${row.flux}" onchange="updMeasure(${i},'flux',this.value)" placeholder="例 0.15"></td>
+      <td><input value="${esc(row.note||'')}" onchange="updMeasure(${i},'note',this.value)" placeholder="地点・手法など"></td>
+      <td><button class="btn-del" onclick="deleteMeasureRow(${i})">✕</button></td>`;
+    tb.appendChild(tr);
+  });
+}
+
+let measureComputed=[]; // CSV用
+function calcMeasure(){
+  readParams();
+  if(!state.measure.length){ alert('実測フラックスを入力してください'); return; }
+  const {efc,sfw_awd,sfw_base,sfp,sfo,sfs,q10,gwp}=state.params;
+  // ③の日次データを日付キーで参照（気温・判定の取得用）
+  const fieldMap={};
+  computeDrainage(state.field).forEach(r=>{ if(r.date) fieldMap[r.date]=r; });
+
+  let rows=[], sumAct=0, sumEst=0, sumEfc=0, matched=0, labels=[], actSeries=[], estSeries=[];
+  state.measure.forEach(m=>{
+    const flux=parseFloat(m.flux);
+    if(isNaN(flux)||!m.date) return;
+    const f=fieldMap[m.date];
+    let est=null, judge=null, efcBack=null, sfw=null;
+    if(f){
+      const tmin=parseFloat(f.tmin), tmax=parseFloat(f.tmax);
+      if(!isNaN(tmin)&&!isNaN(tmax)){
+        const fT=calcFT(tmin,tmax,q10);
+        sfw = f.judge==='awd'? sfw_awd : sfw_base;
+        judge=f.judge;
+        const estHa=dailyEmissionPerHa(efc,sfw*sfp,sfo,sfs,fT); // kgCH4/ha/day
+        est=estHa*KGHA_TO_GM2;                                  // gCH4/m2/day
+        // 逆算EFc：実測フラックス(g/m2)→kg/ha(÷0.1)を、SFw×SFp×SFo×SFs×fTで割る
+        const denom=sfw*sfp*sfo*sfs*fT;
+        if(denom>0) efcBack=(flux/KGHA_TO_GM2)/denom;
+      }
+    }
+    rows.push({date:m.date, flux, est, judge, efcBack, note:m.note||''});
+    sumAct+=flux;
+    labels.push(m.date); actSeries.push(flux); estSeries.push(est==null?null:est);
+    if(est!=null){ sumEst+=est; matched++; if(efcBack!=null) sumEfc+=efcBack; }
+  });
+  if(!rows.length){ alert('有効な実測値がありません（日付・数値を確認してください）'); return; }
+  measureComputed=rows;
+
+  const actAvg=sumAct/rows.length;
+  const estAvg=matched? sumEst/matched : null;
+  const ratio=(matched&&estAvg>0)? (sumAct/rows.length)/(estAvg) : null; // 注：全体平均比ではなく下で点別平均も可
+  const efcAvg=matched? sumEfc/matched : null;
+
+  document.getElementById('ms-actavg').textContent=fmtG(actAvg);
+  document.getElementById('ms-estavg').textContent=estAvg==null?'—':fmtG(estAvg);
+  document.getElementById('ms-ratio').textContent=ratio==null?'—':ratio.toFixed(2);
+  document.getElementById('ms-efc').textContent=efcAvg==null?'—':efcAvg.toFixed(3);
+  // 実測フラックス平均(gCH4/m2/日) → tCO₂e/ha/年： flux/0.1(=kgCH4/ha/日) × gwp ÷ 1000 × 365 = flux × gwp × 3.65
+  document.getElementById('ms-actco2').textContent=(actAvg*gwp*3.65).toFixed(3);
+  document.getElementById('ms-matched').textContent=`${matched} / ${rows.length}`;
+
+  const hint=document.getElementById('ms-efc-hint');
+  if(efcAvg!=null){
+    hint.style.display='block';
+    const diff=((efcAvg/efc-1)*100);
+    hint.innerHTML=`💡 実測から逆算した現地EFcの平均は <b>${efcAvg.toFixed(3)} kgCH₄/ha/日</b>です（現在の設定EFc=${efc} に対し ${diff>=0?'+':''}${diff.toFixed(0)}%）。`
+      + `モデルを現地に合わせるなら、共通パラメータのEFcをこの値に近づけると推定が実測に整合します。`;
+  } else { hint.style.display='none'; }
+
+  const tb=document.getElementById('ms-tbody'); tb.innerHTML='';
+  rows.forEach(r=>{
+    const judgeTag = r.judge==null? '<span class="muted">③に該当日なし</span>'
+      : (r.judge==='awd'?'<span class="tag tag-awd">AWD</span>':'<span class="tag tag-flood">湛水</span>');
+    const estTxt=r.est==null?'—':fmtG(r.est);
+    const diffTxt=r.est==null?'—':((r.flux-r.est>=0?'+':'')+fmtG(r.flux-r.est));
+    const ratioTxt=(r.est==null||r.est<=0)?'—':(r.flux/r.est).toFixed(2);
+    const efcTxt=r.efcBack==null?'—':r.efcBack.toFixed(3);
+    const tr=document.createElement('tr');
+    if(r.judge==='awd') tr.className='row-awd';
+    tr.innerHTML=`<td>${r.date}</td><td class="td-awd">${fmtG(r.flux)}</td><td class="td-base">${estTxt}</td>
+      <td class="td-diff">${diffTxt}</td><td>${ratioTxt}</td><td style="text-align:center">${judgeTag}</td>
+      <td>${efcTxt}</td><td style="text-align:left">${esc(r.note)}</td>`;
+    tb.appendChild(tr);
+  });
+  document.getElementById('ms-tfoot').innerHTML=`<tr><td>平均</td><td>${fmtG(actAvg)}</td><td>${estAvg==null?'—':fmtG(estAvg)}</td>
+    <td colspan="2">—</td><td style="text-align:center">${matched}点照合</td><td>${efcAvg==null?'—':efcAvg.toFixed(3)}</td><td></td></tr>`;
+
+  document.getElementById('measure-results').style.display='block';
+  // 推定が無い点(null)は線が途切れるため0扱いは避け、欠損として描画
+  drawLines(document.getElementById('ms-chart'), labels,
+    [{label:'実測フラックス', color:'#177245', data:actSeries},
+     {label:'モデル推定', color:'#2b6cb0', data:estSeries}], true);
+}
+function fmtG(v){ return (Math.abs(v)>=1? v.toFixed(2) : v.toFixed(3)); }
+
+function exportMeasureCSV(){
+  if(!measureComputed.length){ alert('先に「推定と比較」を実行してください'); return; }
+  const head=['計測日','実測_gCH4/m2/day','推定_gCH4/m2/day','差(実測-推定)','実測/推定','判定','逆算EFc_kgCH4/ha/day','メモ'];
+  const lines=measureComputed.map(r=>{
+    const ratio=(r.est==null||r.est<=0)?'':(r.flux/r.est).toFixed(3);
+    return [r.date, r.flux, r.est==null?'':r.est.toFixed(4), r.est==null?'':(r.flux-r.est).toFixed(4),
+      ratio, (r.judge==null?'':(r.judge==='awd'?'AWD排水':'湛水')), r.efcBack==null?'':r.efcBack.toFixed(4),
+      (r.note||'').replace(/[,\n]/g,' ')];
+  });
+  const csv=[head,...lines].map(r=>r.join(',')).join('\n');
+  downloadBlob('﻿'+csv, (state.projName||'AWD_FS')+'_measure.csv', 'text/csv;charset=utf-8');
+}
+
+// =====================================================================
+//  Custom Canvas charts (依存ライブラリなし)
+// =====================================================================
+function setupCanvas(canvas,cssH){
+  const dpr=window.devicePixelRatio||1;
+  const cssW=canvas.clientWidth||canvas.parentElement.clientWidth||600;
+  canvas.style.height=cssH+'px';
+  canvas.width=Math.round(cssW*dpr); canvas.height=Math.round(cssH*dpr);
+  const ctx=canvas.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0);
+  return {ctx,w:cssW,h:cssH};
+}
+function niceCeil(v){
+  if(v<=0) return 1;
+  const exp=Math.floor(Math.log10(v)), f=v/Math.pow(10,exp);
+  let nf; if(f<=1)nf=1; else if(f<=2)nf=2; else if(f<=2.5)nf=2.5; else if(f<=5)nf=5; else nf=10;
+  return nf*Math.pow(10,exp);
+}
+function fmtNum(v){
+  if(v===0) return '0';
+  const a=Math.abs(v);
+  if(a>=1000) return v.toFixed(0);
+  if(a>=10) return v.toFixed(1);
+  if(a>=1) return v.toFixed(2);
+  if(a>=0.1) return v.toFixed(2);
+  if(a>=0.001) return v.toFixed(3);
+  return v.toPrecision(2);   // 指数表記を避ける
+}
+function shortLabel(s,n){ s=String(s); return s.length>n? s.slice(0,n-1)+'…' : s; }
+
+function drawBars(canvas,groups,series){
+  const {ctx,w,h}=setupCanvas(canvas,310);
+  ctx.clearRect(0,0,w,h);
+  drawLegend(ctx,w,series);
+  const padL=58,padR=16,padT=38,padB=74, plotW=w-padL-padR, plotH=h-padT-padB;
+  let maxV=0; series.forEach(s=>s.data.forEach(v=>{ if(v>maxV)maxV=v; }));
+  const top=niceCeil(maxV||1), ticks=5;
+  ctx.font='11px sans-serif'; ctx.textBaseline='middle';
+  for(let i=0;i<=ticks;i++){
+    const v=top*i/ticks, y=padT+plotH-(v/top)*plotH;
+    ctx.strokeStyle='#eef2f6'; ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(padL+plotW,y); ctx.stroke();
+    ctx.fillStyle='#9aa5b1'; ctx.textAlign='right'; ctx.fillText(fmtNum(v),padL-6,y);
+  }
+  ctx.strokeStyle='#cbd2d9'; ctx.beginPath(); ctx.moveTo(padL,padT); ctx.lineTo(padL,padT+plotH); ctx.lineTo(padL+plotW,padT+plotH); ctx.stroke();
+  const n=groups.length||1, gW=plotW/n, gap=Math.min(0.22*gW,18), innerW=gW-gap, barW=innerW/series.length;
+  groups.forEach((g,gi)=>{
+    const gx=padL+gi*gW+gap/2;
+    series.forEach((s,si)=>{
+      const v=s.data[gi]||0, bh=(v/top)*plotH, x=gx+si*barW, y=padT+plotH-bh;
+      ctx.fillStyle=s.color; ctx.fillRect(x,y,Math.max(barW*0.86,2),bh);
+      if(barW>26||series.length===1){
+        ctx.fillStyle='#52606d'; ctx.font='10px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='bottom';
+        if(v>0) ctx.fillText(fmtNum(v),x+barW*0.43,y-2);
+      }
+    });
+    ctx.save();
+    ctx.translate(gx+innerW/2,padT+plotH+8); ctx.rotate(-Math.PI/9);
+    ctx.fillStyle='#52606d'; ctx.font='11px sans-serif'; ctx.textAlign='right'; ctx.textBaseline='middle';
+    ctx.fillText(shortLabel(g,10),0,0); ctx.restore();
+  });
+}
+
+function drawLines(canvas,labels,series,allowGaps){
+  const {ctx,w,h}=setupCanvas(canvas,310);
+  ctx.clearRect(0,0,w,h);
+  drawLegend(ctx,w,series);
+  const padL=58,padR=16,padT=38,padB=58, plotW=w-padL-padR, plotH=h-padT-padB;
+  let maxV=0; series.forEach(s=>s.data.forEach(v=>{ if(v!=null&&v>maxV)maxV=v; }));
+  const top=niceCeil(maxV||1), ticks=5;
+  ctx.font='11px sans-serif'; ctx.textBaseline='middle';
+  for(let i=0;i<=ticks;i++){
+    const v=top*i/ticks, y=padT+plotH-(v/top)*plotH;
+    ctx.strokeStyle='#eef2f6'; ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(padL+plotW,y); ctx.stroke();
+    ctx.fillStyle='#9aa5b1'; ctx.textAlign='right'; ctx.fillText(fmtNum(v),padL-6,y);
+  }
+  ctx.strokeStyle='#cbd2d9'; ctx.beginPath(); ctx.moveTo(padL,padT); ctx.lineTo(padL,padT+plotH); ctx.lineTo(padL+plotW,padT+plotH); ctx.stroke();
+  const n=labels.length; const xAt=i=> n<=1? padL+plotW/2 : padL+(i/(n-1))*plotW;
+  // x labels（間引き）
+  const step=Math.max(1,Math.ceil(n/8));
+  ctx.fillStyle='#52606d'; ctx.font='10px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='top';
+  for(let i=0;i<n;i+=step){ ctx.fillText(shortLabel(labels[i],10),xAt(i),padT+plotH+8); }
+  series.forEach(s=>{
+    ctx.strokeStyle=s.color; ctx.lineWidth=2; ctx.beginPath();
+    let penDown=false;
+    s.data.forEach((v,i)=>{
+      if(v==null){ penDown=false; return; }            // 欠損は線を途切れさせる
+      const x=xAt(i),y=padT+plotH-(v/top)*plotH;
+      if(penDown) ctx.lineTo(x,y); else ctx.moveTo(x,y);
+      penDown=true;
+    });
+    ctx.stroke();
+    ctx.fillStyle=s.color;
+    const pr=n>40?0:2.5;
+    if(pr) s.data.forEach((v,i)=>{ if(v==null) return; const x=xAt(i),y=padT+plotH-(v/top)*plotH; ctx.beginPath(); ctx.arc(x,y,pr,0,2*Math.PI); ctx.fill(); });
+  });
+}
+
+// 凡例はプロット領域の上部（y=16付近）に右詰めで描画し、棒・線と重ならないようにする
+function drawLegend(ctx,w,series){
+  ctx.font='11px sans-serif'; ctx.textBaseline='middle'; ctx.textAlign='left';
+  const widths=series.map(s=>ctx.measureText(s.label).width+24);
+  const total=widths.reduce((a,b)=>a+b,0);
+  let x=Math.max(58, w-16-total), y=16;
+  series.forEach((s,i)=>{
+    ctx.fillStyle=s.color; ctx.fillRect(x,y-5,12,10);
+    ctx.fillStyle='#52606d'; ctx.fillText(s.label,x+16,y);
+    x+=widths[i];
+  });
+}
+
+// =====================================================================
+//  JSON export / import / reset
+// =====================================================================
+function exportJSON(){
+  readParams();
+  // 現在の作業状態に加え、保存済みシナリオ一式も同梱（Box等での一括バックアップ／共有用）
+  const out=Object.assign({}, state, { _scenarios:loadScenarios() });
+  const data=JSON.stringify(out,null,2);
+  const name=(state.projName||'AWD_FS')+'.json';
+  downloadBlob(data,name,'application/json');
+}
+function importJSON(ev){
+  const file=ev.target.files[0]; if(!file) return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    try{
+      const obj=JSON.parse(e.target.result);
+      // 同梱シナリオがあればマージ取り込み（既存IDは重複回避）
+      let merged=0;
+      if(Array.isArray(obj._scenarios)){
+        const cur=loadScenarios(); const ids=new Set(cur.map(x=>x.id));
+        obj._scenarios.forEach(s=>{ if(s&&s.id){ if(ids.has(s.id)) s.id='s'+Date.now()+Math.floor(Math.random()*1000); cur.push(s); merged++; } });
+        saveScenarios(cur);
+      }
+      delete obj._scenarios;
+      state=Object.assign(defaultState(),obj);
+      applyStateToInputs();
+      // 結果は再計算が必要なので一旦隠す
+      ['baseline-results','reduction-results','field-results','measure-results'].forEach(id=>{const el=document.getElementById(id); if(el)el.style.display='none';});
+      activeScenId=null; renderScenarios();
+      saveState();
+      alert('読み込みました：'+(state.projName||file.name)+(merged?`\n（シナリオ ${merged} 件も取り込みました）`:''));
+    }catch(err){ alert('JSONの読み込みに失敗しました：'+err.message); }
+  };
+  reader.readAsText(file);
+  ev.target.value='';
+}
+function resetAll(){
+  if(!confirm('現在の入力内容を消去して新規作成します。よろしいですか？\n（保存済みシナリオは消えません。必要なら先に「現在の状態を保存」かJSON保存をしてください）')) return;
+  state=defaultState(); applyStateToInputs();
+  ['baseline-results','reduction-results','field-results','measure-results'].forEach(id=>{const el=document.getElementById(id); if(el)el.style.display='none';});
+  activeScenId=null; renderScenarios();
+  saveState();
+}
+function downloadBlob(content,filename,type){
+  const blob=new Blob([content],{type});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download=filename; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
+
+// =====================================================================
+//  Tabs
+// =====================================================================
+// =====================================================================
+//  Accordion (解説タブ)
+// =====================================================================
+function toggleAcc(head){
+  const item=head.parentElement;
+  // 他を閉じる
+  document.querySelectorAll('.acc-item.open').forEach(el=>{ if(el!==item) el.classList.remove('open'); });
+  item.classList.toggle('open');
+}
+
+function switchTab(name){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===name));
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.toggle('active',p.id==='panel-'+name));
+  // 期間テーブルを再描画（①②間の同期）
+  if(name==='baseline'||name==='reduction') renderPeriods();
+}
+
+// =====================================================================
+//  Init
+// =====================================================================
+function seedDefaults(){
+  // 初回のみ：典型的な水稲作付の例を投入
+  if(state.periods.length) return;
+  const y=new Date().getFullYear();
+  const P=(name,m1,d1,m2,d2,tmin,tmax,plan)=>({name,start:`${y}-${String(m1).padStart(2,'0')}-${String(d1).padStart(2,'0')}`,end:`${y}-${String(m2).padStart(2,'0')}-${String(d2).padStart(2,'0')}`,tmin,tmax,waterPlan:plan});
+  state.periods=[
+    P('移植〜活着期',5,1,5,20,18,26,'flood'),
+    P('分げつ初期',5,21,6,10,20,29,'awd'),
+    P('分げつ盛期〜中干し',6,11,7,5,22,33,'awd'),
+    P('出穂前後',7,6,8,10,24,34,'flood'),
+    P('登熟〜落水',8,11,9,20,22,32,'awd')
+  ];
+}
+
+window.addEventListener('load',()=>{
+  loadState();
+  if(!state.periods.length){ seedDefaults(); applyStateToInputs(); saveState(); }
+  renderScenarios();
+});
+let resizeTimer=null;
+window.addEventListener('resize',()=>{
+  // 表示中の結果チャートを再描画（連続発火を抑制）
+  clearTimeout(resizeTimer);
+  resizeTimer=setTimeout(()=>{
+    if(document.getElementById('baseline-results').style.display==='block') calcBaseline();
+    if(document.getElementById('reduction-results').style.display==='block') calcReduction();
+    if(document.getElementById('field-results').style.display==='block') calcField();
+    if(document.getElementById('measure-results').style.display==='block') calcMeasure();
+  },200);
+});
+</script>
+</body>
+</html>
