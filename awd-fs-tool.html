@@ -280,6 +280,18 @@
     </div>
     <div class="form-row">
       <div class="form-group">
+        <label>SFw_base（ベースライン水管理）</label>
+        <input type="number" id="sfw_base" value="1.0" step="0.01" min="0.1" oninput="saveState()">
+        <small>作期中の慣行水管理。常時湛水=1.0 / 1回落水=0.71 / 複数回落水=0.55</small>
+      </div>
+      <div class="form-group">
+        <label>SFp（作付け前水管理）</label>
+        <input type="number" id="sfp" value="1.0" step="0.01" min="0.1" oninput="saveState()">
+        <small>作付前の湛水歴なし=1.0 / 短期湛水&lt;180日=1.22 / 作付前湛水&gt;30日=2.41（ベースラインを上げられる）</small>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
         <label>圃場面積（ha）</label>
         <input type="number" id="area" value="1.0" step="0.01" min="0.01" oninput="saveState()">
       </div>
@@ -772,6 +784,26 @@
 
         <div class="acc-item">
           <div class="acc-head" onclick="toggleAcc(this)">
+            <span class="acc-tag param">係数</span><span class="acc-title">SFw_base・SFp（ベースライン水管理・作付け前水管理）</span><span class="acc-ex">ベースラインの高さを決める係数</span><span class="acc-arrow">▼</span>
+          </div>
+          <div class="acc-body">
+            <div class="acc-grid">
+              <div class="acc-main">
+                <p><b>何のための値か：</b>ベースライン（プロジェクトをやらなかった場合の慣行）の水管理を表す係数です。AWDによる削減量は「ベースライン排出 − プロジェクト排出」で決まるため、<b>ベースラインが高いほど削減量（クレジット）も大きく</b>なります。</p>
+                <p><b>SFw_base（作期中の慣行水管理）：</b>ベースラインが常時湛水なら1.0。もし慣行ですでに1回落水しているなら0.71、複数回なら0.55と、ベースライン自体が下がります。慣行が湛水（1.0）であるほどAWDの削減余地が大きくなります。</p>
+                <p><b>SFp（作付け前の水管理）：</b>IPCCでは作期の排出に、作付け<b>前</b>の水管理状態を掛け合わせます。作付け前に長期湛水していた圃場は土壌に有機物が蓄積し、作期のメタンが増えるため係数が大きくなります。<b>作付け前に30日以上湛水すると2.41</b>まで上がり、ベースライン排出（＝削減ポテンシャル）を引き上げられます。</p>
+                <p><b>使い方の例：</b>「作付け前に意図的に湛水管理を行う圃場」をベースラインとして設定すると、SFpが1.0→1.9〜2.41となり、ベースライン排出が約2倍に。その分、AWD導入時の削減量も比例して大きくなります。※方法論・追加性の要件（そのベースラインが実態として妥当か）を必ず確認してください。</p>
+              </div>
+              <div class="acc-side">
+                <div class="acc-formula">日排出（ベース）=<br>EFc × SFw_base × SFp<br>　× SFo × SFs × f_T<br><br>SFp 参考値：<br>湛水歴なし = 1.0<br>短期湛水 &lt;180日 ≈ 1.22<br>作付前湛水 &gt;30日 = 2.41</div>
+                <div class="acc-note">SFpはベースラインとプロジェクトの両方に掛かるため、削減量は SFp に比例して増加します（削減率自体は不変）。値はIPCC 2019 Refinement Vol.4 Ch.5 の既定値。地域・方法論の規定値を優先してください。</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="acc-item">
+          <div class="acc-head" onclick="toggleAcc(this)">
             <span class="acc-tag param">係数</span><span class="acc-title">SFo（有機物係数）</span><span class="acc-ex">通常：1.0 ／ わら還元等で増加</span><span class="acc-arrow">▼</span>
           </div>
           <div class="acc-body">
@@ -966,7 +998,7 @@ let state = defaultState();
 function defaultState(){
   return {
     projName:'',
-    params:{ preset:'', efc:1.3, sfw_awd:0.52, sfo:1.0, sfs:1.0, q10:2.0, area:1.0, gwp:28, projYears:5 },
+    params:{ preset:'', efc:1.3, sfw_awd:0.52, sfw_base:1.0, sfp:1.0, sfo:1.0, sfs:1.0, q10:2.0, area:1.0, gwp:28, projYears:5 },
     periods:[],
     field:[],
     measure:[]
@@ -979,6 +1011,8 @@ function readParams(){
     preset: val('preset',''),
     efc:    num('efc',1.3),
     sfw_awd:num('sfw_awd',0.52),
+    sfw_base:num('sfw_base',1.0),
+    sfp:    num('sfp',1.0),
     sfo:    num('sfo',1.0),
     sfs:    num('sfs',1.0),
     q10:    num('q10',2.0),
@@ -1018,6 +1052,7 @@ function applyStateToInputs(){
   const p=state.params;
   setVal('projName',state.projName);
   setVal('preset',p.preset); setVal('efc',p.efc); setVal('sfw_awd',p.sfw_awd);
+  setVal('sfw_base',p.sfw_base); setVal('sfp',p.sfp);
   setVal('sfo',p.sfo); setVal('sfs',p.sfs); setVal('q10',p.q10);
   setVal('area',p.area); setVal('gwp',p.gwp); setVal('projYears',p.projYears);
   renderPeriods(); renderFieldInput(); renderMeasureInput();
@@ -1235,12 +1270,12 @@ function esc(s){ return String(s==null?'':s).replace(/"/g,'&quot;'); }
 function calcBaseline(){
   readParams();
   if(!state.periods.length){ alert('作付期間を1件以上追加してください'); return; }
-  const {efc,sfo,sfs,q10,area,gwp}=state.params;
+  const {efc,sfw_base,sfp,sfo,sfs,q10,area,gwp}=state.params;
   let rows=[], totCH4=0, totDays=0;
   state.periods.forEach(p=>{
     const days=periodDays(p); if(days<=0) return;
     const fT=calcFT(p.tmin,p.tmax,q10);
-    const perHa=dailyEmissionPerHa(efc,1.0,sfo,sfs,fT);   // 湛水 SFw=1.0
+    const perHa=dailyEmissionPerHa(efc,sfw_base*sfp,sfo,sfs,fT);   // ベースライン SFw_base×SFp
     const ch4=perHa*area*days;
     const co2e=ch4*gwp/1000;
     rows.push({name:p.name,days,avgT:(p.tmin+p.tmax)/2,fT,perHa,ch4,co2e});
@@ -1274,14 +1309,14 @@ function calcBaseline(){
 function calcReduction(){
   readParams();
   if(!state.periods.length){ alert('①で作付期間を追加してください'); return; }
-  const {efc,sfw_awd,sfo,sfs,q10,area,gwp,projYears}=state.params;
+  const {efc,sfw_awd,sfw_base,sfp,sfo,sfs,q10,area,gwp,projYears}=state.params;
   let rows=[], totBase=0, totAwd=0, totDays=0;
   state.periods.forEach(p=>{
     const days=periodDays(p); if(days<=0) return;
     const fT=calcFT(p.tmin,p.tmax,q10);
-    const sfwAwd = p.waterPlan==='awd'? sfw_awd : 1.0;
-    const baseHa = dailyEmissionPerHa(efc,1.0,sfo,sfs,fT);
-    const awdHa  = dailyEmissionPerHa(efc,sfwAwd,sfo,sfs,fT);
+    const sfwAwd = p.waterPlan==='awd'? sfw_awd : sfw_base;
+    const baseHa = dailyEmissionPerHa(efc,sfw_base*sfp,sfo,sfs,fT);
+    const awdHa  = dailyEmissionPerHa(efc,sfwAwd*sfp,sfo,sfs,fT);
     const baseCO2e = baseHa*area*days*gwp/1000;
     const awdCO2e  = awdHa *area*days*gwp/1000;
     rows.push({name:p.name,days,fT,plan:p.waterPlan,base:baseCO2e,awd:awdCO2e,reduc:baseCO2e-awdCO2e});
@@ -1403,17 +1438,17 @@ let fieldComputed=[]; // CSV用に保持
 function calcField(){
   readParams();
   if(!state.field.length){ alert('日次データを入力してください'); return; }
-  const {efc,sfw_awd,sfo,sfs,q10,area,gwp}=state.params;
+  const {efc,sfw_awd,sfw_base,sfp,sfo,sfs,q10,area,gwp}=state.params;
   const comp=computeDrainage(state.field);
   let rows=[], cumBase=0, cumAct=0, totBase=0, totAct=0, awdDays=0;
   comp.forEach(row=>{
     const tmin=parseFloat(row.tmin), tmax=parseFloat(row.tmax);
     if(isNaN(tmin)||isNaN(tmax)||!row.date) return;
     const fT=calcFT(tmin,tmax,q10);
-    const sfw = row.judge==='awd'? sfw_awd : 1.0;
+    const sfw = row.judge==='awd'? sfw_awd : sfw_base;
     if(row.judge==='awd') awdDays++;
-    const baseHa = dailyEmissionPerHa(efc,1.0,sfo,sfs,fT);
-    const actHa  = dailyEmissionPerHa(efc,sfw,sfo,sfs,fT);
+    const baseHa = dailyEmissionPerHa(efc,sfw_base*sfp,sfo,sfs,fT);
+    const actHa  = dailyEmissionPerHa(efc,sfw*sfp,sfo,sfs,fT);
     const baseCO2e=baseHa*area*gwp/1000;
     const actCO2e =actHa *area*gwp/1000;
     cumBase+=baseCO2e; cumAct+=actCO2e; totBase+=baseCO2e; totAct+=actCO2e;
@@ -1521,7 +1556,7 @@ let measureComputed=[]; // CSV用
 function calcMeasure(){
   readParams();
   if(!state.measure.length){ alert('実測フラックスを入力してください'); return; }
-  const {efc,sfw_awd,sfo,sfs,q10,gwp}=state.params;
+  const {efc,sfw_awd,sfw_base,sfp,sfo,sfs,q10,gwp}=state.params;
   // ③の日次データを日付キーで参照（気温・判定の取得用）
   const fieldMap={};
   computeDrainage(state.field).forEach(r=>{ if(r.date) fieldMap[r.date]=r; });
@@ -1536,12 +1571,12 @@ function calcMeasure(){
       const tmin=parseFloat(f.tmin), tmax=parseFloat(f.tmax);
       if(!isNaN(tmin)&&!isNaN(tmax)){
         const fT=calcFT(tmin,tmax,q10);
-        sfw = f.judge==='awd'? sfw_awd : 1.0;
+        sfw = f.judge==='awd'? sfw_awd : sfw_base;
         judge=f.judge;
-        const estHa=dailyEmissionPerHa(efc,sfw,sfo,sfs,fT);     // kgCH4/ha/day
+        const estHa=dailyEmissionPerHa(efc,sfw*sfp,sfo,sfs,fT); // kgCH4/ha/day
         est=estHa*KGHA_TO_GM2;                                  // gCH4/m2/day
-        // 逆算EFc：実測フラックス(g/m2)→kg/ha(÷0.1)を、SFw×SFo×SFs×fTで割る
-        const denom=sfw*sfo*sfs*fT;
+        // 逆算EFc：実測フラックス(g/m2)→kg/ha(÷0.1)を、SFw×SFp×SFo×SFs×fTで割る
+        const denom=sfw*sfp*sfo*sfs*fT;
         if(denom>0) efcBack=(flux/KGHA_TO_GM2)/denom;
       }
     }
