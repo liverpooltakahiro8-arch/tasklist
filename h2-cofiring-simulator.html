@@ -71,6 +71,16 @@
     border-radius: 12px;
     padding: 16px;
   }
+  .pattern-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .pattern-row select, .pattern-row input[type="text"] {
+    font: inherit; font-size: 13px;
+    padding: 6px 8px; border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--page); color: var(--text-primary);
+  }
+  .pattern-row select { min-width: 190px; }
+  .pattern-status { font-size: 12px; color: var(--good); margin-left: 4px; }
+  .card.patterns { margin-bottom: 12px; }
   .grid-inputs { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 12px; }
   @media (max-width: 900px) { .grid-inputs { grid-template-columns: 1fr; } }
   .card h2 { font-size: 14px; margin: 0 0 10px; color: var(--text-primary); }
@@ -153,6 +163,21 @@
       <input type="file" id="fileInput" accept=".json,application/json" hidden>
     </div>
   </header>
+
+  <div class="card patterns">
+    <h2>保存パターン <span class="tag">A社向け・B社向けなど、条件セットに名前を付けて保存できます</span></h2>
+    <div class="pattern-row">
+      <select id="patternSelect" aria-label="保存パターンを選択">
+        <option value="">パターンを選択して読み込み…</option>
+      </select>
+      <input type="text" id="patternName" maxlength="40" placeholder="パターン名(例: A社向け)">
+      <button id="btnPatternSave">現在の条件を保存</button>
+      <button id="btnPatternDelete">選択中を削除</button>
+      <button id="btnPatternExport">全パターン書き出し</button>
+      <span class="pattern-status" id="patternStatus" role="status"></span>
+    </div>
+    <div class="hint">パターンはこのブラウザ(localStorage)に保存されます。別のPCやメンバーと共有する場合は「全パターン書き出し」でJSONファイル化し、相手側で「JSONインポート」から取り込んでください(パターンファイルは自動判別されます)。</div>
+  </div>
 
   <div class="grid-inputs">
     <div class="card">
@@ -283,7 +308,7 @@
       <li>GX-ETS削減メリット = (都市ガス100%比のCO2削減量) × 炭素価格。実効総コスト = 燃料コスト + CO2排出量 × 炭素価格。損益分岐炭素価格 = 燃料コスト増分 ÷ CO2削減量(この炭素価格を超えると混焼が経済的に有利)。</li>
       <li>本ツールは概算検討用です。契約条件・託送・設備改造費等は含みません。</li>
     </ul>
-    <p class="file-note">JSONエクスポートで入力条件と計算結果を保存し、JSONインポートで条件を復元できます。本ファイルは単一HTMLで完結しており、BOX等に格納してダウンロード後、ブラウザで開いて利用できます。</p>
+    <p class="file-note">JSONエクスポートで入力条件と計算結果を保存し、JSONインポートで条件を復元できます。「保存パターン」はブラウザのlocalStorageに保持され、「全パターン書き出し」でJSONファイルとして共有・バックアップできます(取り込みはJSONインポートから)。本ファイルは単一HTMLで完結しており、BOX等に格納してダウンロード後、ブラウザで開いて利用できます。</p>
   </div>
 </div>
 
@@ -611,7 +636,130 @@
     lastResults = { inputs: p, current: cur, baseline: base, reduction: reduction, etsMerit: merit, breakevenCarbonPrice: isFinite(breakeven) ? breakeven : null };
   }
 
+  // ---------- saved patterns (localStorage) ----------
+  var PATTERN_KEY = "h2mix-patterns-v1";
+
+  function loadPatterns() {
+    try {
+      var raw = localStorage.getItem(PATTERN_KEY);
+      var obj = raw ? JSON.parse(raw) : {};
+      return obj && typeof obj === "object" && !Array.isArray(obj) ? obj : {};
+    } catch (e) { return {}; }
+  }
+  function storePatterns(patterns) {
+    try {
+      localStorage.setItem(PATTERN_KEY, JSON.stringify(patterns));
+      return true;
+    } catch (e) {
+      alert("ブラウザの設定によりパターンを保存できませんでした。「全パターン書き出し」の代わりに「JSONエクスポート」でファイル保存をご利用ください。");
+      return false;
+    }
+  }
+  function refreshPatternSelect(selectedName) {
+    var sel = $("patternSelect");
+    sel.textContent = "";
+    var placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "パターンを選択して読み込み…";
+    sel.appendChild(placeholder);
+    var patterns = loadPatterns();
+    Object.keys(patterns).sort(function (a, b) { return a.localeCompare(b, "ja"); }).forEach(function (name) {
+      var opt = document.createElement("option");
+      opt.value = name;
+      opt.textContent = name;
+      sel.appendChild(opt);
+    });
+    sel.value = selectedName && patterns[selectedName] ? selectedName : "";
+  }
+  var statusTimer = null;
+  function patternStatus(msg) {
+    var el = $("patternStatus");
+    el.textContent = msg;
+    clearTimeout(statusTimer);
+    statusTimer = setTimeout(function () { el.textContent = ""; }, 4000);
+  }
+  function savePattern() {
+    var name = $("patternName").value.trim() || $("caseName").value.trim();
+    if (!name) {
+      alert("パターン名を入力してください(例: A社向け)。");
+      $("patternName").focus();
+      return;
+    }
+    var patterns = loadPatterns();
+    var existed = !!patterns[name];
+    patterns[name] = { inputs: readInputs(), savedAt: new Date().toISOString() };
+    if (storePatterns(patterns)) {
+      refreshPatternSelect(name);
+      $("patternName").value = name;
+      patternStatus("「" + name + "」を" + (existed ? "上書き保存" : "保存") + "しました");
+    }
+  }
+  function loadPattern(name) {
+    var entry = loadPatterns()[name];
+    if (!entry || !entry.inputs) return;
+    applyInputs(entry.inputs);
+    $("patternName").value = name;
+    patternStatus("「" + name + "」を読み込みました");
+  }
+  function deletePattern() {
+    var name = $("patternSelect").value || $("patternName").value.trim();
+    var patterns = loadPatterns();
+    if (!name || !patterns[name]) {
+      alert("削除するパターンを選択してください。");
+      return;
+    }
+    if (!confirm("パターン「" + name + "」を削除しますか?")) return;
+    delete patterns[name];
+    if (storePatterns(patterns)) {
+      refreshPatternSelect("");
+      patternStatus("「" + name + "」を削除しました");
+    }
+  }
+  function exportPatterns() {
+    var patterns = loadPatterns();
+    if (!Object.keys(patterns).length) {
+      alert("保存されているパターンがありません。先に「現在の条件を保存」してください。");
+      return;
+    }
+    var payload = {
+      tool: "h2-cofiring-simulator",
+      version: 1,
+      type: "patterns",
+      exportedAt: new Date().toISOString(),
+      patterns: patterns
+    };
+    downloadJSON(payload, "h2mix_patterns_" + new Date().toISOString().slice(0, 10) + ".json");
+  }
+  function importPatterns(obj) {
+    var incoming = obj.patterns;
+    var patterns = loadPatterns();
+    var count = 0;
+    Object.keys(incoming).forEach(function (name) {
+      var entry = incoming[name];
+      var inputs = entry && typeof entry === "object" ? (entry.inputs && typeof entry.inputs === "object" ? entry.inputs : entry) : null;
+      if (!inputs || typeof name !== "string" || !name.trim()) return;
+      patterns[name.trim().slice(0, 40)] = { inputs: inputs, savedAt: entry.savedAt || new Date().toISOString() };
+      count++;
+    });
+    if (!count) throw new Error("no valid patterns");
+    if (storePatterns(patterns)) {
+      refreshPatternSelect("");
+      patternStatus(count + "件のパターンを取り込みました");
+    }
+  }
+
   // ---------- JSON import / export ----------
+  function downloadJSON(payload, filename) {
+    var blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+  }
+
   function exportJSON() {
     var p = readInputs();
     var r = lastResults;
@@ -636,15 +784,8 @@
         breakevenCarbonPriceYenPerTonne: r.breakevenCarbonPrice
       } : null
     };
-    var blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-    var a = document.createElement("a");
     var name = (p.caseName || "case").replace(/[\\/:*?"<>|\s]+/g, "_");
-    a.href = URL.createObjectURL(blob);
-    a.download = "h2mix_" + name + "_" + new Date().toISOString().slice(0, 10) + ".json";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+    downloadJSON(payload, "h2mix_" + name + "_" + new Date().toISOString().slice(0, 10) + ".json");
   }
 
   function applyInputs(obj) {
@@ -665,11 +806,15 @@
     reader.onload = function () {
       try {
         var obj = JSON.parse(String(reader.result));
-        var inputs = obj && typeof obj === "object" ? (obj.inputs && typeof obj.inputs === "object" ? obj.inputs : obj) : null;
-        if (!inputs) throw new Error("bad format");
+        if (!obj || typeof obj !== "object") throw new Error("bad format");
+        if (obj.patterns && typeof obj.patterns === "object" && !Array.isArray(obj.patterns)) {
+          importPatterns(obj);
+          return;
+        }
+        var inputs = obj.inputs && typeof obj.inputs === "object" ? obj.inputs : obj;
         applyInputs(inputs);
       } catch (e) {
-        alert("JSONの読み込みに失敗しました。本ツールでエクスポートしたファイルか、inputs形式のJSONを指定してください。");
+        alert("JSONの読み込みに失敗しました。本ツールでエクスポートしたファイル(単一ケースまたはパターン一式)を指定してください。");
       }
     };
     reader.readAsText(file);
@@ -701,6 +846,14 @@
       this.value = "";
     });
     $("btnReset").addEventListener("click", function () { applyInputs(DEFAULTS); });
+
+    refreshPatternSelect("");
+    $("btnPatternSave").addEventListener("click", savePattern);
+    $("btnPatternDelete").addEventListener("click", deletePattern);
+    $("btnPatternExport").addEventListener("click", exportPatterns);
+    $("patternSelect").addEventListener("change", function () {
+      if (this.value) loadPattern(this.value);
+    });
 
     var resizeTimer = null;
     window.addEventListener("resize", function () {
