@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>水素×都市ガス混焼シミュレーター</title>
+<style>
+  :root {
+    --surface-1: #fcfcfb;
+    --page: #f9f9f7;
+    --text-primary: #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted: #898781;
+    --grid: #e1e0d9;
+    --axis: #c3c2b7;
+    --border: rgba(11,11,11,0.10);
+    --series-1: #2a78d6;   /* 青: 燃料コスト / CO2 */
+    --series-2: #1baf7a;   /* アクア: 炭素価格込み */
+    --good: #006300;
+    --bad: #d03b3b;
+    --accent-wash: rgba(42,120,214,0.08);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --surface-1: #1a1a19;
+      --page: #0d0d0d;
+      --text-primary: #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted: #898781;
+      --grid: #2c2c2a;
+      --axis: #383835;
+      --border: rgba(255,255,255,0.10);
+      --series-1: #3987e5;
+      --series-2: #199e70;
+      --good: #0ca30c;
+      --bad: #e66767;
+      --accent-wash: rgba(57,135,229,0.12);
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--text-primary);
+    font-family: system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Noto Sans JP", sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 24px 16px 48px; }
+  header.top {
+    display: flex; flex-wrap: wrap; gap: 12px;
+    align-items: flex-end; justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  h1 { font-size: 20px; margin: 0; }
+  .sub { color: var(--text-secondary); font-size: 13px; margin-top: 2px; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  button {
+    font: inherit; font-size: 13px;
+    padding: 7px 14px; border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface-1); color: var(--text-primary);
+    cursor: pointer;
+  }
+  button:hover { background: var(--accent-wash); }
+  button.primary { background: var(--series-1); border-color: transparent; color: #fff; }
+  button.primary:hover { opacity: 0.9; background: var(--series-1); }
+  .card {
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+  }
+  .grid-inputs { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+  @media (max-width: 900px) { .grid-inputs { grid-template-columns: 1fr; } }
+  .card h2 { font-size: 14px; margin: 0 0 10px; color: var(--text-primary); }
+  .card h2 .tag { font-weight: normal; color: var(--text-muted); font-size: 12px; margin-left: 6px; }
+  .field { margin-bottom: 10px; }
+  .field label { display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 2px; }
+  .field .row { display: flex; align-items: center; gap: 6px; }
+  .field input[type="number"], .field input[type="text"] {
+    font: inherit; width: 100%; max-width: 160px;
+    padding: 6px 8px; border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--page); color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+  }
+  .field .unit { color: var(--text-muted); font-size: 12px; white-space: nowrap; }
+  .presets { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+  .presets button { padding: 3px 10px; font-size: 12px; border-radius: 999px; }
+  .hint { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+  .slider-row { display: flex; align-items: center; gap: 12px; }
+  input[type="range"] { flex: 1; accent-color: var(--series-1); }
+  .blend-readout { font-size: 13px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+  .blend-readout b { color: var(--text-primary); font-size: 16px; }
+
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin: 16px 0; }
+  .tile { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; }
+  .tile .label { font-size: 12px; color: var(--text-secondary); }
+  .tile .value { font-size: 24px; font-weight: 600; margin-top: 2px; }
+  .tile .value .u { font-size: 12px; font-weight: normal; color: var(--text-muted); margin-left: 3px; white-space: nowrap; display: inline-block; }
+  .tile .delta { font-size: 12px; margin-top: 2px; color: var(--text-muted); }
+  .tile .delta.good { color: var(--good); }
+  .tile .delta.bad { color: var(--bad); }
+
+  .charts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 900px) { .charts { grid-template-columns: 1fr; } }
+  .chart-card { position: relative; }
+  .chart-card h3 { font-size: 13px; margin: 0 0 2px; }
+  .chart-card .desc { font-size: 11px; color: var(--text-muted); margin: 0 0 8px; }
+  .legend { display: flex; gap: 16px; font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; }
+  .legend .key { display: inline-flex; align-items: center; gap: 6px; }
+  .legend .swatch { width: 16px; height: 0; border-top: 2px solid; border-radius: 2px; }
+  svg { display: block; width: 100%; height: auto; }
+  svg text { font-family: inherit; }
+  .tooltip {
+    position: absolute; pointer-events: none; display: none;
+    background: var(--surface-1); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 10px; font-size: 12px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.12); z-index: 5; min-width: 150px;
+  }
+  .tooltip .t-head { color: var(--text-muted); margin-bottom: 4px; }
+  .tooltip .t-row { display: flex; align-items: center; gap: 6px; }
+  .tooltip .t-key { width: 12px; border-top: 2px solid; border-radius: 2px; flex: none; }
+  .tooltip .t-val { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .tooltip .t-name { color: var(--text-secondary); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 6px 10px; text-align: right; border-bottom: 1px solid var(--grid); font-variant-numeric: tabular-nums; }
+  th { color: var(--text-secondary); font-weight: 600; font-size: 12px; }
+  th:first-child, td:first-child { text-align: left; }
+  tr.current td { background: var(--accent-wash); font-weight: 600; }
+  .table-scroll { overflow-x: auto; }
+  details { margin-top: 16px; }
+  summary { cursor: pointer; font-size: 13px; color: var(--text-secondary); padding: 6px 0; }
+  .section-title { font-size: 14px; font-weight: 600; margin: 20px 0 8px; }
+  .notes { font-size: 11px; color: var(--text-muted); margin-top: 20px; line-height: 1.7; }
+  .notes ul { margin: 4px 0 0; padding-left: 18px; }
+  .file-note { font-size: 11px; color: var(--text-muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>水素×都市ガス混焼シミュレーター</h1>
+      <div class="sub">価格・CI値・必要熱量から、CO2排出量とコスト、GX-ETS(炭素価格)を踏まえた削減メリットを試算します(高位発熱量 HHV 基準)</div>
+    </div>
+    <div class="actions">
+      <button id="btnImport">JSONインポート</button>
+      <button id="btnExport" class="primary">JSONエクスポート</button>
+      <button id="btnReset">初期値に戻す</button>
+      <input type="file" id="fileInput" accept=".json,application/json" hidden>
+    </div>
+  </header>
+
+  <div class="grid-inputs">
+    <div class="card">
+      <h2>都市ガス <span class="tag">13A想定</span></h2>
+      <div class="field">
+        <label for="gasPrice">価格</label>
+        <div class="row"><input type="number" id="gasPrice" min="0" step="1"><span class="unit">円/Nm³</span></div>
+      </div>
+      <div class="field">
+        <label for="gasHHV">発熱量(HHV)</label>
+        <div class="row"><input type="number" id="gasHHV" min="1" step="0.1"><span class="unit">MJ/Nm³</span></div>
+      </div>
+      <div class="field">
+        <label for="gasCI">CI値(炭素強度)</label>
+        <div class="row"><input type="number" id="gasCI" min="0" step="0.0001"><span class="unit">kg-CO2/MJ</span></div>
+        <div class="hint">初期値 0.0499 は都市ガスの標準的な燃焼由来排出係数相当</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>水素</h2>
+      <div class="field">
+        <label for="h2Price">価格</label>
+        <div class="row"><input type="number" id="h2Price" min="0" step="1"><span class="unit">円/Nm³</span></div>
+        <div class="hint">参考: 水素基本戦略の2030年目標 30円/Nm³</div>
+      </div>
+      <div class="field">
+        <label for="h2HHV">発熱量(HHV)</label>
+        <div class="row"><input type="number" id="h2HHV" min="1" step="0.1"><span class="unit">MJ/Nm³</span></div>
+      </div>
+      <div class="field">
+        <label for="h2CI">CI値(炭素強度)</label>
+        <div class="row"><input type="number" id="h2CI" min="0" step="0.0001"><span class="unit">kg-CO2/MJ</span></div>
+        <div class="presets">
+          <button type="button" data-ci="0">グリーン 0</button>
+          <button type="button" data-ci="0.02">ブルー 0.02</button>
+          <button type="button" data-ci="0.09">グレー 0.09</button>
+        </div>
+        <div class="hint">プリセットは目安値。製造・輸送実態に応じて上書きしてください</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>シナリオ条件</h2>
+      <div class="field">
+        <label for="heatDemand">得たい全体の熱量</label>
+        <div class="row"><input type="number" id="heatDemand" min="0" step="100"><span class="unit">GJ</span></div>
+      </div>
+      <div class="field">
+        <label for="carbonPrice">炭素価格(GX-ETS想定)</label>
+        <div class="row"><input type="number" id="carbonPrice" min="0" step="100"><span class="unit">円/t-CO2</span></div>
+      </div>
+      <div class="field">
+        <label for="caseName">ケース名(エクスポート時のファイル名等に使用)</label>
+        <input type="text" id="caseName" maxlength="40" placeholder="例: 2030年グリーン水素">
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>水素混焼率(体積基準)</h2>
+    <div class="slider-row">
+      <input type="range" id="blendSlider" min="0" max="100" step="1" aria-label="水素混焼率(体積パーセント)">
+      <input type="number" id="blendNum" min="0" max="100" step="1" style="width:70px; font:inherit; padding:6px 8px; border-radius:6px; border:1px solid var(--border); background: var(--page); color: var(--text-primary); font-variant-numeric: tabular-nums;">
+      <div class="blend-readout">体積 <b id="blendVolLabel">30</b>% <span id="blendEnergyLabel">= 熱量 10.9%</span></div>
+    </div>
+  </div>
+
+  <div class="tiles" id="tiles">
+    <div class="tile"><div class="label">CO2排出量</div><div class="value"><span id="tCO2">–</span><span class="u">t-CO2</span></div><div class="delta" id="tCO2d"></div></div>
+    <div class="tile"><div class="label">燃料コスト(総額)</div><div class="value"><span id="tCost">–</span><span class="u">円</span></div><div class="delta" id="tCostd"></div></div>
+    <div class="tile"><div class="label">熱量当たり燃料コスト</div><div class="value"><span id="tUnit">–</span><span class="u">円/GJ</span></div><div class="delta" id="tUnitd"></div></div>
+    <div class="tile"><div class="label">GX-ETS 削減メリット</div><div class="value"><span id="tMerit">–</span><span class="u">円</span></div><div class="delta" id="tMeritd"></div></div>
+    <div class="tile"><div class="label">実効総コスト(炭素価格込み)</div><div class="value"><span id="tEff">–</span><span class="u">円</span></div><div class="delta" id="tEffd"></div></div>
+    <div class="tile"><div class="label">損益分岐炭素価格</div><div class="value"><span id="tBreak">–</span><span class="u">円/t-CO2</span></div><div class="delta" id="tBreakd"></div></div>
+  </div>
+
+  <div class="charts">
+    <div class="card chart-card">
+      <h3>熱量当たりコスト × 混焼率</h3>
+      <p class="desc">横軸: 水素混焼率(体積%) / 縦軸: 円/GJ。縦の細線が現在の設定位置</p>
+      <div class="legend">
+        <span class="key"><span class="swatch" style="border-color: var(--series-1)"></span>燃料コストのみ</span>
+        <span class="key"><span class="swatch" style="border-color: var(--series-2)"></span>炭素価格込み</span>
+      </div>
+      <div id="chartCost"></div>
+      <div class="tooltip" id="tipCost"></div>
+    </div>
+    <div class="card chart-card">
+      <h3>CO2排出量 × 混焼率</h3>
+      <p class="desc">横軸: 水素混焼率(体積%) / 縦軸: t-CO2(必要熱量全体に対して)</p>
+      <div id="chartCO2"></div>
+      <div class="tooltip" id="tipCO2"></div>
+    </div>
+  </div>
+
+  <div class="section-title">現在ケースの内訳(都市ガス100%との比較)</div>
+  <div class="card table-scroll">
+    <table id="breakdownTable">
+      <thead>
+        <tr><th>項目</th><th>現在ケース</th><th>都市ガス100%</th><th>差分</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <details>
+    <summary>混焼率 0〜100%(10%刻み)を表で見る</summary>
+    <div class="card table-scroll" style="margin-top:8px;">
+      <table id="sweepTable">
+        <thead>
+          <tr>
+            <th>体積%</th><th>熱量%</th><th>CO2排出量<br>(t-CO2)</th><th>CO2削減量<br>(t-CO2)</th>
+            <th>燃料コスト<br>(円)</th><th>円/GJ<br>(燃料)</th><th>ETSメリット<br>(円)</th><th>実効総コスト<br>(円)</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </details>
+
+  <div class="notes">
+    <b>前提・注意事項</b>
+    <ul>
+      <li>発熱量は高位発熱量(HHV)基準です。初期値: 都市ガス13A 45 MJ/Nm³、水素 12.8 MJ/Nm³。</li>
+      <li>混焼率は体積基準で入力し、内部で熱量按分して計算します。燃焼機器の効率は両燃料で同一と仮定しています(効率差・NOx等は考慮外)。</li>
+      <li>CI値は燃料の炭素強度 [kg-CO2/MJ]。都市ガスの初期値 0.0499 は燃焼由来の標準的な排出係数相当、水素のプリセット(グリーン0 / ブルー0.02 / グレー0.09)はライフサイクルの目安値です。制度算定(GX-ETS・温対法)では所定の係数・境界に従ってください。</li>
+      <li>GX-ETS削減メリット = (都市ガス100%比のCO2削減量) × 炭素価格。実効総コスト = 燃料コスト + CO2排出量 × 炭素価格。損益分岐炭素価格 = 燃料コスト増分 ÷ CO2削減量(この炭素価格を超えると混焼が経済的に有利)。</li>
+      <li>本ツールは概算検討用です。契約条件・託送・設備改造費等は含みません。</li>
+    </ul>
+    <p class="file-note">JSONエクスポートで入力条件と計算結果を保存し、JSONインポートで条件を復元できます。本ファイルは単一HTMLで完結しており、BOX等に格納してダウンロード後、ブラウザで開いて利用できます。</p>
+  </div>
+</div>
+
+<script>
+"use strict";
+(function () {
+  var DEFAULTS = {
+    gasPrice: 90, gasHHV: 45, gasCI: 0.0499,
+    h2Price: 100, h2HHV: 12.8, h2CI: 0,
+    heatDemand: 10000, carbonPrice: 5000,
+    blendVolPct: 30, caseName: ""
+  };
+  var NUM_KEYS = ["gasPrice","gasHHV","gasCI","h2Price","h2HHV","h2CI","heatDemand","carbonPrice","blendVolPct"];
+
+  function $(id) { return document.getElementById(id); }
+  function cssVar(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  }
+
+  // ---------- formatting ----------
+  function fmt(x, digits) {
+    if (!isFinite(x)) return "–";
+    return x.toLocaleString("ja-JP", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  }
+  function fmtAuto(x) { // adaptive decimals for magnitudes
+    if (!isFinite(x)) return "–";
+    var a = Math.abs(x);
+    if (a >= 1000) return fmt(x, 0);
+    if (a >= 100) return fmt(x, 1);
+    if (a >= 1) return fmt(x, 2);
+    return fmt(x, 3);
+  }
+  function fmtSigned(x, digits) {
+    if (!isFinite(x)) return "–";
+    return (x > 0 ? "+" : "") + fmt(x, digits);
+  }
+
+  // ---------- model ----------
+  function readInputs() {
+    var p = {};
+    NUM_KEYS.forEach(function (k) {
+      var v = parseFloat($(k === "blendVolPct" ? "blendNum" : k).value);
+      p[k] = isFinite(v) ? v : DEFAULTS[k];
+    });
+    p.blendVolPct = Math.min(100, Math.max(0, p.blendVolPct));
+    p.caseName = $("caseName").value.trim();
+    return p;
+  }
+
+  // v: hydrogen volume fraction 0..1
+  function calcCase(v, p) {
+    var mixHeat = v * p.h2HHV + (1 - v) * p.gasHHV;         // MJ per Nm3 of mixed gas
+    var totalMJ = p.heatDemand * 1000;                       // GJ -> MJ
+    var vTot = mixHeat > 0 ? totalMJ / mixHeat : 0;          // Nm3 of mixed gas
+    var vH2 = v * vTot, vGas = (1 - v) * vTot;               // Nm3 each
+    var eH2 = vH2 * p.h2HHV, eGas = vGas * p.gasHHV;         // MJ each
+    var energyShareH2 = totalMJ > 0 ? eH2 / totalMJ : 0;
+    var fuelCost = vH2 * p.h2Price + vGas * p.gasPrice;      // yen
+    var co2t = (eH2 * p.h2CI + eGas * p.gasCI) / 1000;       // t-CO2
+    var etsCost = co2t * p.carbonPrice;                      // yen
+    return {
+      v: v, mixHeat: mixHeat, vTot: vTot, vH2: vH2, vGas: vGas,
+      eH2: eH2, eGas: eGas, energyShareH2: energyShareH2,
+      fuelCost: fuelCost, co2t: co2t, etsCost: etsCost,
+      effCost: fuelCost + etsCost,
+      unitFuel: p.heatDemand > 0 ? fuelCost / p.heatDemand : NaN,       // yen/GJ
+      unitEff: p.heatDemand > 0 ? (fuelCost + etsCost) / p.heatDemand : NaN
+    };
+  }
+
+  // ---------- charts ----------
+  function niceTicks(min, max, n) {
+    if (min === max) { max = min + 1; }
+    var span = max - min;
+    var step = Math.pow(10, Math.floor(Math.log10(span / n)));
+    var err = span / n / step;
+    if (err >= 7.5) step *= 10; else if (err >= 3.5) step *= 5; else if (err >= 1.5) step *= 2;
+    var ticks = [];
+    var t0 = Math.ceil(min / step) * step;
+    for (var t = t0; t <= max + step * 1e-6; t += step) ticks.push(Math.round(t / step) * step);
+    return ticks;
+  }
+  function svgEl(name, attrs) {
+    var el = document.createElementNS("http://www.w3.org/2000/svg", name);
+    for (var k in attrs) el.setAttribute(k, attrs[k]);
+    return el;
+  }
+
+  // container: div, tip: tooltip div, cfg: {series:[{name,color,values(101)}], yFmt, curIdx, tipFmt}
+  function drawLineChart(container, tip, cfg) {
+    container.textContent = "";
+    var W = Math.max(container.clientWidth || 480, 300), H = 300;
+    var padL = 58, padR = 16, padT = 12, padB = 34;
+    var plotW = W - padL - padR, plotH = H - padT - padB;
+
+    var allVals = [];
+    cfg.series.forEach(function (s) { s.values.forEach(function (y) { if (isFinite(y)) allVals.push(y); }); });
+    var yMax = allVals.length ? Math.max.apply(null, allVals) : 1;
+    var yMin = 0; // both cost and CO2 are magnitudes from a zero baseline
+    if (yMax <= yMin) yMax = yMin + 1;
+    var yTicks = niceTicks(yMin, yMax * 1.05, 5);
+    yMax = Math.max(yMax * 1.05, yTicks[yTicks.length - 1]);
+
+    function xPos(i) { return padL + (i / 100) * plotW; }
+    function yPos(y) { return padT + plotH - ((y - yMin) / (yMax - yMin)) * plotH; }
+
+    var svg = svgEl("svg", { viewBox: "0 0 " + W + " " + H, width: W, height: H, role: "img" });
+
+    // gridlines + y labels
+    yTicks.forEach(function (t) {
+      var y = yPos(t);
+      svg.appendChild(svgEl("line", { x1: padL, x2: W - padR, y1: y, y2: y, stroke: cssVar("--grid"), "stroke-width": 1 }));
+      var lbl = svgEl("text", { x: padL - 8, y: y + 4, "text-anchor": "end", "font-size": 11, fill: cssVar("--text-muted"), style: "font-variant-numeric: tabular-nums" });
+      lbl.textContent = t.toLocaleString("ja-JP");
+      svg.appendChild(lbl);
+    });
+    // x axis
+    svg.appendChild(svgEl("line", { x1: padL, x2: W - padR, y1: padT + plotH, y2: padT + plotH, stroke: cssVar("--axis"), "stroke-width": 1 }));
+    [0, 20, 40, 60, 80, 100].forEach(function (t) {
+      var lbl = svgEl("text", { x: xPos(t), y: padT + plotH + 18, "text-anchor": "middle", "font-size": 11, fill: cssVar("--text-muted"), style: "font-variant-numeric: tabular-nums" });
+      lbl.textContent = t + "%";
+      svg.appendChild(lbl);
+    });
+
+    // current-position marker (hairline)
+    var curX = xPos(cfg.curIdx);
+    svg.appendChild(svgEl("line", { x1: curX, x2: curX, y1: padT, y2: padT + plotH, stroke: cssVar("--axis"), "stroke-width": 1 }));
+
+    // series lines
+    cfg.series.forEach(function (s) {
+      var d = "";
+      s.values.forEach(function (y, i) {
+        if (!isFinite(y)) return;
+        d += (d ? " L" : "M") + xPos(i).toFixed(1) + " " + yPos(y).toFixed(1);
+      });
+      svg.appendChild(svgEl("path", { d: d, fill: "none", stroke: s.color, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }));
+    });
+    // current-position dots (surface ring + fill)
+    cfg.series.forEach(function (s) {
+      var y = s.values[cfg.curIdx];
+      if (!isFinite(y)) return;
+      svg.appendChild(svgEl("circle", { cx: curX, cy: yPos(y), r: 6, fill: cssVar("--surface-1") }));
+      svg.appendChild(svgEl("circle", { cx: curX, cy: yPos(y), r: 4, fill: s.color }));
+    });
+
+    // crosshair (hidden until hover)
+    var cross = svgEl("line", { x1: 0, x2: 0, y1: padT, y2: padT + plotH, stroke: cssVar("--text-muted"), "stroke-width": 1, visibility: "hidden" });
+    svg.appendChild(cross);
+
+    container.appendChild(svg);
+
+    function showTip(evt) {
+      var rect = svg.getBoundingClientRect();
+      var mx = (evt.clientX - rect.left) * (W / rect.width);
+      var i = Math.round(((mx - padL) / plotW) * 100);
+      if (i < 0 || i > 100) { hideTip(); return; }
+      cross.setAttribute("x1", xPos(i)); cross.setAttribute("x2", xPos(i));
+      cross.setAttribute("visibility", "visible");
+      tip.textContent = "";
+      var head = document.createElement("div");
+      head.className = "t-head";
+      head.textContent = "混焼率 " + i + "%(体積)";
+      tip.appendChild(head);
+      cfg.series.forEach(function (s) {
+        var row = document.createElement("div"); row.className = "t-row";
+        var key = document.createElement("span"); key.className = "t-key"; key.style.borderColor = s.color;
+        var val = document.createElement("span"); val.className = "t-val"; val.textContent = cfg.yFmt(s.values[i]);
+        var name = document.createElement("span"); name.className = "t-name"; name.textContent = s.name;
+        row.appendChild(key); row.appendChild(val); row.appendChild(name);
+        tip.appendChild(row);
+      });
+      tip.style.display = "block";
+      var card = container.parentElement;
+      var cardRect = card.getBoundingClientRect();
+      var tx = evt.clientX - cardRect.left + 14;
+      if (tx + tip.offsetWidth > cardRect.width - 8) tx = evt.clientX - cardRect.left - tip.offsetWidth - 14;
+      var ty = evt.clientY - cardRect.top - tip.offsetHeight / 2;
+      ty = Math.max(4, Math.min(ty, cardRect.height - tip.offsetHeight - 4));
+      tip.style.left = tx + "px";
+      tip.style.top = ty + "px";
+    }
+    function hideTip() {
+      tip.style.display = "none";
+      cross.setAttribute("visibility", "hidden");
+    }
+    svg.addEventListener("pointermove", showTip);
+    svg.addEventListener("pointerleave", hideTip);
+  }
+
+  // ---------- render ----------
+  var lastResults = null;
+
+  function setDelta(el, delta, digits, unit, downIsGood) {
+    if (!isFinite(delta) || Math.abs(delta) < 1e-9) { el.textContent = "都市ガス100%と同等"; el.className = "delta"; return; }
+    var good = downIsGood ? delta < 0 : delta > 0;
+    el.textContent = fmtSigned(delta, digits) + " " + unit + "(都市ガス100%比)";
+    el.className = "delta " + (good ? "good" : "bad");
+  }
+
+  function recalc() {
+    var p = readInputs();
+    var v = p.blendVolPct / 100;
+    var cur = calcCase(v, p);
+    var base = calcCase(0, p);
+
+    // blend readout
+    $("blendVolLabel").textContent = p.blendVolPct;
+    $("blendEnergyLabel").textContent = "= 熱量 " + fmt(cur.energyShareH2 * 100, 1) + "%";
+
+    // tiles
+    $("tCO2").textContent = fmtAuto(cur.co2t);
+    setDelta($("tCO2d"), cur.co2t - base.co2t, Math.abs(base.co2t) >= 100 ? 0 : 1, "t", true);
+
+    $("tCost").textContent = fmt(cur.fuelCost, 0);
+    setDelta($("tCostd"), cur.fuelCost - base.fuelCost, 0, "円", true);
+
+    $("tUnit").textContent = fmt(cur.unitFuel, 0);
+    setDelta($("tUnitd"), cur.unitFuel - base.unitFuel, 0, "円/GJ", true);
+
+    var reduction = base.co2t - cur.co2t;
+    var merit = reduction * p.carbonPrice;
+    $("tMerit").textContent = fmt(merit, 0);
+    $("tMeritd").textContent = "CO2削減量 " + fmtAuto(reduction) + " t × " + fmt(p.carbonPrice, 0) + " 円/t";
+    $("tMeritd").className = "delta";
+
+    $("tEff").textContent = fmt(cur.effCost, 0);
+    setDelta($("tEffd"), cur.effCost - base.effCost, 0, "円", true);
+
+    var breakeven = reduction > 1e-9 ? (cur.fuelCost - base.fuelCost) / reduction : NaN;
+    if (isFinite(breakeven) && breakeven > 0) {
+      $("tBreak").textContent = fmt(breakeven, 0);
+      var over = p.carbonPrice >= breakeven;
+      $("tBreakd").textContent = over ? "現在の炭素価格で混焼が有利" : "この炭素価格を超えると混焼が有利";
+      $("tBreakd").className = "delta " + (over ? "good" : "");
+    } else if (isFinite(breakeven) && breakeven <= 0) {
+      $("tBreak").textContent = "0";
+      $("tBreakd").textContent = "炭素価格ゼロでも混焼が有利";
+      $("tBreakd").className = "delta good";
+    } else {
+      $("tBreak").textContent = "–";
+      $("tBreakd").textContent = "CO2削減が生じない条件です";
+      $("tBreakd").className = "delta";
+    }
+
+    // breakdown table
+    var tb = $("breakdownTable").querySelector("tbody");
+    tb.textContent = "";
+    function addRow(name, curV, baseV, digits, unit) {
+      var tr = document.createElement("tr");
+      function td(txt, alignLeft) {
+        var el = document.createElement("td");
+        el.textContent = txt;
+        if (alignLeft) el.style.textAlign = "left";
+        return el;
+      }
+      tr.appendChild(td(name, true));
+      tr.appendChild(td(isFinite(curV) ? fmt(curV, digits) + " " + unit : "–"));
+      tr.appendChild(td(isFinite(baseV) ? fmt(baseV, digits) + " " + unit : "–"));
+      tr.appendChild(td(isFinite(curV) && isFinite(baseV) ? fmtSigned(curV - baseV, digits) + " " + unit : "–"));
+      tb.appendChild(tr);
+    }
+    addRow("水素使用量", cur.vH2, 0, 0, "Nm³");
+    addRow("都市ガス使用量", cur.vGas, base.vGas, 0, "Nm³");
+    addRow("水素による熱量", cur.eH2 / 1000, 0, 1, "GJ");
+    addRow("都市ガスによる熱量", cur.eGas / 1000, base.eGas / 1000, 1, "GJ");
+    addRow("CO2排出量", cur.co2t, base.co2t, 1, "t-CO2");
+    addRow("燃料コスト", cur.fuelCost, base.fuelCost, 0, "円");
+    addRow("熱量当たり燃料コスト", cur.unitFuel, base.unitFuel, 0, "円/GJ");
+    addRow("炭素価格負担(排出量×炭素価格)", cur.etsCost, base.etsCost, 0, "円");
+    addRow("実効総コスト", cur.effCost, base.effCost, 0, "円");
+    addRow("実効・熱量当たりコスト", cur.unitEff, base.unitEff, 0, "円/GJ");
+
+    // sweep series for charts and table
+    var unitFuelSeries = [], unitEffSeries = [], co2Series = [];
+    var sweep = [];
+    for (var i = 0; i <= 100; i++) {
+      var c = calcCase(i / 100, p);
+      unitFuelSeries.push(c.unitFuel);
+      unitEffSeries.push(c.unitEff);
+      co2Series.push(c.co2t);
+      if (i % 10 === 0) sweep.push(c);
+    }
+
+    drawLineChart($("chartCost"), $("tipCost"), {
+      series: [
+        { name: "燃料コストのみ", color: cssVar("--series-1"), values: unitFuelSeries },
+        { name: "炭素価格込み", color: cssVar("--series-2"), values: unitEffSeries }
+      ],
+      yFmt: function (y) { return isFinite(y) ? fmt(y, 0) + " 円/GJ" : "–"; },
+      curIdx: Math.round(p.blendVolPct)
+    });
+    drawLineChart($("chartCO2"), $("tipCO2"), {
+      series: [
+        { name: "CO2排出量", color: cssVar("--series-1"), values: co2Series }
+      ],
+      yFmt: function (y) { return isFinite(y) ? fmtAuto(y) + " t-CO2" : "–"; },
+      curIdx: Math.round(p.blendVolPct)
+    });
+
+    // sweep table
+    var st = $("sweepTable").querySelector("tbody");
+    st.textContent = "";
+    sweep.forEach(function (c) {
+      var tr = document.createElement("tr");
+      if (Math.round(c.v * 100) === Math.round(p.blendVolPct / 10) * 10 && Math.round(p.blendVolPct) % 10 === 0) tr.className = "current";
+      var red = base.co2t - c.co2t;
+      [
+        Math.round(c.v * 100) + "%",
+        fmt(c.energyShareH2 * 100, 1) + "%",
+        fmtAuto(c.co2t),
+        fmtAuto(red),
+        fmt(c.fuelCost, 0),
+        fmt(c.unitFuel, 0),
+        fmt(red * p.carbonPrice, 0),
+        fmt(c.effCost, 0)
+      ].forEach(function (txt, idx) {
+        var td = document.createElement("td");
+        td.textContent = txt;
+        if (idx === 0) td.style.textAlign = "left";
+        tr.appendChild(td);
+      });
+      st.appendChild(tr);
+    });
+
+    lastResults = { inputs: p, current: cur, baseline: base, reduction: reduction, etsMerit: merit, breakevenCarbonPrice: isFinite(breakeven) ? breakeven : null };
+  }
+
+  // ---------- JSON import / export ----------
+  function exportJSON() {
+    var p = readInputs();
+    var r = lastResults;
+    var payload = {
+      tool: "h2-cofiring-simulator",
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      note: "価格:円/Nm³, 発熱量:MJ/Nm³(HHV), CI:kg-CO2/MJ, 熱量:GJ, 炭素価格:円/t-CO2, 混焼率:体積%",
+      inputs: p,
+      results: r ? {
+        blendEnergyPct: r.current.energyShareH2 * 100,
+        h2VolumeNm3: r.current.vH2,
+        gasVolumeNm3: r.current.vGas,
+        co2Tonnes: r.current.co2t,
+        co2BaselineTonnes: r.baseline.co2t,
+        co2ReductionTonnes: r.reduction,
+        fuelCostYen: r.current.fuelCost,
+        fuelCostPerGJ: r.current.unitFuel,
+        etsMeritYen: r.etsMerit,
+        effectiveCostYen: r.current.effCost,
+        effectiveCostPerGJ: r.current.unitEff,
+        breakevenCarbonPriceYenPerTonne: r.breakevenCarbonPrice
+      } : null
+    };
+    var blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    var a = document.createElement("a");
+    var name = (p.caseName || "case").replace(/[\\/:*?"<>|\s]+/g, "_");
+    a.href = URL.createObjectURL(blob);
+    a.download = "h2mix_" + name + "_" + new Date().toISOString().slice(0, 10) + ".json";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+  }
+
+  function applyInputs(obj) {
+    NUM_KEYS.forEach(function (k) {
+      if (obj[k] !== undefined && isFinite(Number(obj[k]))) {
+        var val = Number(obj[k]);
+        if (k === "blendVolPct") val = Math.min(100, Math.max(0, val));
+        $(k === "blendVolPct" ? "blendNum" : k).value = val;
+        if (k === "blendVolPct") $("blendSlider").value = val;
+      }
+    });
+    if (typeof obj.caseName === "string") $("caseName").value = obj.caseName.slice(0, 40);
+    recalc();
+  }
+
+  function importJSON(file) {
+    var reader = new FileReader();
+    reader.onload = function () {
+      try {
+        var obj = JSON.parse(String(reader.result));
+        var inputs = obj && typeof obj === "object" ? (obj.inputs && typeof obj.inputs === "object" ? obj.inputs : obj) : null;
+        if (!inputs) throw new Error("bad format");
+        applyInputs(inputs);
+      } catch (e) {
+        alert("JSONの読み込みに失敗しました。本ツールでエクスポートしたファイルか、inputs形式のJSONを指定してください。");
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  // ---------- wiring ----------
+  function init() {
+    applyInputs(DEFAULTS);
+    ["gasPrice","gasHHV","gasCI","h2Price","h2HHV","h2CI","heatDemand","carbonPrice"].forEach(function (id) {
+      $(id).addEventListener("input", recalc);
+    });
+    $("blendSlider").addEventListener("input", function () {
+      $("blendNum").value = this.value; recalc();
+    });
+    $("blendNum").addEventListener("input", function () {
+      var v = Math.min(100, Math.max(0, parseFloat(this.value) || 0));
+      $("blendSlider").value = v; recalc();
+    });
+    document.querySelectorAll(".presets button").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        $("h2CI").value = this.getAttribute("data-ci");
+        recalc();
+      });
+    });
+    $("btnExport").addEventListener("click", exportJSON);
+    $("btnImport").addEventListener("click", function () { $("fileInput").click(); });
+    $("fileInput").addEventListener("change", function () {
+      if (this.files && this.files[0]) importJSON(this.files[0]);
+      this.value = "";
+    });
+    $("btnReset").addEventListener("click", function () { applyInputs(DEFAULTS); });
+
+    var resizeTimer = null;
+    window.addEventListener("resize", function () {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(recalc, 150);
+    });
+    if (window.matchMedia) {
+      window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", recalc);
+    }
+  }
+  init();
+})();
+</script>
+</body>
+</html>
