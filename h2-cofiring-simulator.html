@@ -501,10 +501,14 @@
   // ---------- render ----------
   var lastResults = null;
 
-  function setDelta(el, delta, digits, unit, downIsGood) {
+  function setDelta(el, delta, baseVal, digits, unit, downIsGood) {
     if (!isFinite(delta) || Math.abs(delta) < 1e-9) { el.textContent = "都市ガス100%と同等"; el.className = "delta"; return; }
     var good = downIsGood ? delta < 0 : delta > 0;
-    el.textContent = fmtSigned(delta, digits) + " " + unit + "(都市ガス100%比)";
+    var pct = "";
+    if (isFinite(baseVal) && Math.abs(baseVal) > 1e-9) {
+      pct = " / " + fmtSigned(delta / baseVal * 100, 1) + "%";
+    }
+    el.textContent = fmtSigned(delta, digits) + " " + unit + pct + "(都市ガス100%比)";
     el.className = "delta " + (good ? "good" : "bad");
   }
 
@@ -520,13 +524,13 @@
 
     // tiles
     $("tCO2").textContent = fmtAuto(cur.co2t);
-    setDelta($("tCO2d"), cur.co2t - base.co2t, Math.abs(base.co2t) >= 100 ? 0 : 1, "t", true);
+    setDelta($("tCO2d"), cur.co2t - base.co2t, base.co2t, Math.abs(base.co2t) >= 100 ? 0 : 1, "t", true);
 
     $("tCost").textContent = fmt(cur.fuelCost, 0);
-    setDelta($("tCostd"), cur.fuelCost - base.fuelCost, 0, "円", true);
+    setDelta($("tCostd"), cur.fuelCost - base.fuelCost, base.fuelCost, 0, "円", true);
 
     $("tUnit").textContent = fmt(cur.unitFuel, 0);
-    setDelta($("tUnitd"), cur.unitFuel - base.unitFuel, 0, "円/GJ", true);
+    setDelta($("tUnitd"), cur.unitFuel - base.unitFuel, base.unitFuel, 0, "円/GJ", true);
 
     var reduction = base.co2t - cur.co2t;
     var merit = reduction * p.carbonPrice;
@@ -535,7 +539,7 @@
     $("tMeritd").className = "delta";
 
     $("tEff").textContent = fmt(cur.effCost, 0);
-    setDelta($("tEffd"), cur.effCost - base.effCost, 0, "円", true);
+    setDelta($("tEffd"), cur.effCost - base.effCost, base.effCost, 0, "円", true);
 
     var breakeven = reduction > 1e-9 ? (cur.fuelCost - base.fuelCost) / reduction : NaN;
     if (isFinite(breakeven) && breakeven > 0) {
