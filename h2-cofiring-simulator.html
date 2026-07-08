@@ -224,7 +224,8 @@
       <h2>シナリオ条件</h2>
       <div class="field">
         <label for="heatDemand">得たい全体の熱量</label>
-        <div class="row"><input type="number" id="heatDemand" min="0" step="100"><span class="unit">GJ</span></div>
+        <div class="row"><input type="number" id="heatDemand" min="0" step="100"><span class="unit" id="heatH2Equiv">GJ</span></div>
+        <div class="hint">水素100%で賄う場合の必要量を換算表示(入力は熱量のみでOK)</div>
       </div>
       <div class="field">
         <label for="carbonPrice">炭素価格(GX-ETS想定)</label>
@@ -521,6 +522,12 @@
     // blend readout
     $("blendVolLabel").textContent = p.blendVolPct;
     $("blendEnergyLabel").textContent = "= 熱量 " + fmt(cur.energyShareH2 * 100, 1) + "%";
+
+    // hydrogen-equivalent volume of the whole heat demand (if covered by H2 alone)
+    var h2EquivNm3 = p.h2HHV > 0 ? p.heatDemand * 1000 / p.h2HHV : NaN;
+    $("heatH2Equiv").textContent = isFinite(h2EquivNm3)
+      ? "GJ ≈ 水素換算 " + fmt(h2EquivNm3, 0) + " Nm³"
+      : "GJ";
 
     // tiles
     $("tCO2").textContent = fmtAuto(cur.co2t);
